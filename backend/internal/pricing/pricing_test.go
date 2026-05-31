@@ -61,3 +61,63 @@ func TestCalculateRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateWithRules(t *testing.T) {
+	product := Product{ID: "test", Name: "テスト商品", UnitPrice: 100}
+	two := 2
+	three := 3
+	ninety := 90
+	oneHundred := 100
+	oneHundredNinety := 190
+
+	tests := []struct {
+		name     string
+		quantity int
+		rules    []Rule
+		want     Item
+	}{
+		{
+			name:     "ルールなしは通常価格",
+			quantity: 3,
+			want:     Item{ProductID: "test", Name: "テスト商品", UnitPrice: 100, Quantity: 3, Amount: 300},
+		},
+		{
+			name:     "固定合計を優先",
+			quantity: 2,
+			rules: []Rule{
+				{Type: RuleTypeTierUnit, MinQuantity: 1, MaxQuantity: &two, UnitPrice: &oneHundred},
+				{Type: RuleTypeFixedTotal, MinQuantity: 2, MaxQuantity: &two, TotalPrice: &oneHundredNinety},
+			},
+			want: Item{ProductID: "test", Name: "テスト商品", UnitPrice: 95, Quantity: 2, Amount: 190},
+		},
+		{
+			name:     "段階単価を使用",
+			quantity: 3,
+			rules: []Rule{
+				{Type: RuleTypeTierUnit, MinQuantity: 3, MaxQuantity: nil, UnitPrice: &ninety},
+			},
+			want: Item{ProductID: "test", Name: "テスト商品", UnitPrice: 90, Quantity: 3, Amount: 270},
+		},
+		{
+			name:     "同種ルールはpriorityが高いものを使用",
+			quantity: 3,
+			rules: []Rule{
+				{Type: RuleTypeTierUnit, MinQuantity: 3, MaxQuantity: &three, UnitPrice: &oneHundred, Priority: 1},
+				{Type: RuleTypeTierUnit, MinQuantity: 3, MaxQuantity: &three, UnitPrice: &ninety, Priority: 2},
+			},
+			want: Item{ProductID: "test", Name: "テスト商品", UnitPrice: 90, Quantity: 3, Amount: 270},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := CalculateWithRules(product, test.quantity, test.rules)
+			if err != nil {
+				t.Fatalf("CalculateWithRules() error = %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("CalculateWithRules() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}

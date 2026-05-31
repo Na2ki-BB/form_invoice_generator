@@ -1,11 +1,8 @@
-import { useState } from 'react'
-import type { CustomerInfo, Product } from './types'
-
-const initialProducts: Product[] = [
-  { id: 'prayer-a', name: '祈祷A', unitPrice: 5000, quantity: 0 },
-  { id: 'ofuda', name: '御札', unitPrice: 1000, quantity: 0 },
-  { id: 'omamori', name: 'お守り', unitPrice: 800, quantity: 0 },
-]
+import { useEffect, useState } from 'react'
+import FormsPage from './admin/FormsPage'
+import ProductsPage from './admin/ProductsPage'
+import SubmissionsPage from './admin/SubmissionsPage'
+import type { CustomerInfo, Product, PublicForm } from './types'
 
 const initialCustomerInfo: CustomerInfo = {
   customerName: '',
@@ -20,7 +17,24 @@ const initialCustomerInfo: CustomerInfo = {
 const formatPrice = (price: number) => `${price.toLocaleString('ja-JP')}円`
 
 function App() {
-  const [products, setProducts] = useState(initialProducts)
+  if (window.location.pathname === '/admin/submissions') {
+    return <SubmissionsPage />
+  }
+  if (window.location.pathname === '/admin/products') {
+    return <ProductsPage />
+  }
+  if (window.location.pathname === '/admin/forms') {
+    return <FormsPage />
+  }
+
+  return <PublicFormPage />
+}
+
+function PublicFormPage() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [formTitle, setFormTitle] = useState('申込み請求フォーム')
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [customerInfo, setCustomerInfo] = useState(initialCustomerInfo)
   const [errors, setErrors] = useState<string[]>([])
   const [screen, setScreen] = useState<'input' | 'confirm' | 'complete'>('input')
@@ -31,14 +45,36 @@ function App() {
     0,
   )
 
+  useEffect(() => {
+    const loadForm = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8080/public/forms/default')
+        if (!response.ok) throw new Error('form loading failed')
+
+        const publicForm: PublicForm = await response.json()
+        setFormTitle(publicForm.title)
+        setProducts(publicForm.products.map((product) => ({ ...product, quantity: 0 })))
+      } catch {
+        setLoadError('商品情報の読み込みに失敗しました。時間をおいてもう一度お試しください。')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    void loadForm()
+  }, [])
+
   const handleQuantityChange = (productId: string, quantity: number) => {
-    const normalizedQuantity = Math.min(10, Math.max(0, quantity || 0))
     setProducts((currentProducts) =>
-      currentProducts.map((product) =>
-        product.id === productId
-          ? { ...product, quantity: normalizedQuantity }
-          : product,
-      ),
+      currentProducts.map((product) => {
+        if (product.id !== productId) return product
+
+        const normalizedQuantity = Math.min(
+          product.maxQuantity,
+          Math.max(product.minQuantity, quantity || 0),
+        )
+        return { ...product, quantity: normalizedQuantity }
+      }),
     )
   }
 
@@ -156,9 +192,17 @@ function App() {
     )
   }
 
+  if (isLoading) {
+    return <main><p>商品情報を読み込んでいます。</p></main>
+  }
+
+  if (loadError) {
+    return <main><p className="error-message" role="alert">{loadError}</p></main>
+  }
+
   return (
     <main>
-      <h1>申込み請求フォーム</h1>
+      <h1>{formTitle}</h1>
       <p>商品ごとに数量を入力してください。</p>
 
       <form onSubmit={handleSubmit}>

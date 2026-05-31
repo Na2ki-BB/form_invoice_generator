@@ -181,3 +181,22 @@ button {
   background-color: #ffffff;
   border: 1px solid #d0d5dd;
 }
+
+.month-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.submissions-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.submissions-table th,
+.submissions-table td {
+  padding: 8px;
+  border: 1px solid #dddddd;
+  text-align: left;
+}

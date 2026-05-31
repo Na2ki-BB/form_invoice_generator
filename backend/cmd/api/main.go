@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"form-invoice-generator/backend/internal/database"
+	formrepository "form-invoice-generator/backend/internal/form"
 	"form-invoice-generator/backend/internal/invoice"
 	"form-invoice-generator/backend/internal/pricing"
+	"form-invoice-generator/backend/internal/product"
 	"form-invoice-generator/backend/internal/submission"
 )
 
@@ -42,10 +45,18 @@ func main() {
 	defer db.Close()
 
 	submissionRepository := submission.NewRepository(db)
+	formRepository := formrepository.NewRepository(db)
+	pricingRepository := pricing.NewRepository(db)
+	productRepository := product.NewRepository(db)
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/invoice/download", handleInvoiceDownload)
-	http.HandleFunc("/submissions", handleSubmission(submissionRepository))
+	http.HandleFunc("/submissions", handleSubmission(submissionRepository, pricingRepository))
+	http.HandleFunc("/public/forms/", handlePublicForm(formRepository))
+	http.HandleFunc("/admin/submissions", handleAdminSubmissions(submissionRepository))
+	http.HandleFunc("/admin/invoices/bulk-download", handleBulkInvoiceDownload(submissionRepository))
+	http.HandleFunc("/admin/products", handleAdminProducts(productRepository))
+	http.HandleFunc("/admin/forms", handleAdminForms(formRepository))
 
 	log.Printf("API server listening on %s", address)
 	if err := http.ListenAndServe(address, nil); err != nil {
@@ -94,7 +105,220 @@ func handleInvoiceDownload(w http.ResponseWriter, r *http.Request) {
 	writeInvoice(w, generated, "invoice_test.xlsx")
 }
 
-func handleSubmission(repository *submission.Repository) http.HandlerFunc {
+func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method == http.MethodGet {
+			forms, err := repository.List(r.Context())
+			if err != nil {
+				log.Printf("list forms: %v", err)
+				http.Error(w, "failed to list forms", http.StatusInternalServerError)
+				return
+			}
+			if forms == nil {
+				forms = []formrepository.AdminForm{}
+			}
+			writeJSON(w, http.StatusOK, forms)
+			return
+		}
+
+		var requestedForm formrepository.AdminForm
+		if err := json.NewDecoder(r.Body).Decode(&requestedForm); err != nil || requestedForm.Title == "" || requestedForm.PublicSlug == "" {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		var err error
+		if r.Method == http.MethodPost {
+			requestedForm.ID, err = repository.Create(r.Context(), requestedForm)
+		} else if r.Method == http.MethodPut {
+			err = repository.Update(r.Context(), requestedForm)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err != nil {
+			log.Printf("save form: %v", err)
+			http.Error(w, "failed to save form", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, requestedForm)
+	}
+}
+
+func handleAdminProducts(repository *product.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			products, err := repository.List(r.Context())
+			if err != nil {
+				log.Printf("list products: %v", err)
+				http.Error(w, "failed to list products", http.StatusInternalServerError)
+				return
+			}
+			if products == nil {
+				products = []product.Product{}
+			}
+			writeJSON(w, http.StatusOK, products)
+			return
+		}
+
+		var requestedProduct product.Product
+		if err := json.NewDecoder(r.Body).Decode(&requestedProduct); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if requestedProduct.ID == "" || requestedProduct.Name == "" || requestedProduct.Category == "" || requestedProduct.BaseUnitPrice < 0 {
+			http.Error(w, "invalid product", http.StatusBadRequest)
+			return
+		}
+
+		var err error
+		switch r.Method {
+		case http.MethodPost:
+			err = repository.Create(r.Context(), requestedProduct)
+		case http.MethodPut:
+			err = repository.Update(r.Context(), requestedProduct)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err != nil {
+			log.Printf("save product: %v", err)
+			http.Error(w, "failed to save product", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, requestedProduct)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func handleBulkInvoiceDownload(repository *submission.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var request struct {
+			SubmissionIDs []int64 `json:"submissionIds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.SubmissionIDs) == 0 {
+			http.Error(w, "submissionIds are required", http.StatusBadRequest)
+			return
+		}
+
+		details, err := repository.FindDetailsByIDs(r.Context(), request.SubmissionIDs)
+		if err != nil {
+			log.Printf("find invoice submissions: %v", err)
+			http.Error(w, "failed to find submissions", http.StatusInternalServerError)
+			return
+		}
+		if len(details) != len(request.SubmissionIDs) {
+			http.Error(w, "submission not found", http.StatusNotFound)
+			return
+		}
+
+		generated, err := invoice.GenerateArchive(details)
+		if err != nil {
+			log.Printf("generate invoice archive: %v", err)
+			http.Error(w, "failed to generate invoice archive", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="invoices.zip"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(generated)
+	}
+}
+
+func handleAdminSubmissions(repository *submission.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		month, err := time.Parse("2006-01", r.URL.Query().Get("month"))
+		if err != nil {
+			http.Error(w, "month must use YYYY-MM format", http.StatusBadRequest)
+			return
+		}
+
+		summaries, err := repository.ListByMonth(r.Context(), month)
+		if err != nil {
+			log.Printf("list submissions: %v", err)
+			http.Error(w, "failed to list submissions", http.StatusInternalServerError)
+			return
+		}
+		if summaries == nil {
+			summaries = []submission.Summary{}
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(summaries)
+	}
+}
+
+func handlePublicForm(repository *formrepository.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		slug := strings.TrimPrefix(r.URL.Path, "/public/forms/")
+		if slug == "" || strings.Contains(slug, "/") {
+			http.Error(w, "form not found", http.StatusNotFound)
+			return
+		}
+
+		foundForm, err := repository.FindBySlug(r.Context(), slug)
+		if err == formrepository.ErrNotFound {
+			http.Error(w, "form not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			log.Printf("find public form: %v", err)
+			http.Error(w, "failed to find form", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(foundForm)
+	}
+}
+
+func handleSubmission(repository *submission.Repository, pricingRepository *pricing.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -117,7 +341,7 @@ func handleSubmission(repository *submission.Repository) http.HandlerFunc {
 		items := make([]pricing.Item, 0, len(request.Items))
 		totalAmount := 0
 		for _, requestedItem := range request.Items {
-			item, err := pricing.Calculate(requestedItem.ProductID, requestedItem.Quantity)
+			item, err := pricingRepository.Calculate(r.Context(), requestedItem.ProductID, requestedItem.Quantity)
 			if err != nil {
 				http.Error(w, "invalid item", http.StatusBadRequest)
 				return
