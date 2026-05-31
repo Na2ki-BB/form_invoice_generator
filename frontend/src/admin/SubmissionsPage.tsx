@@ -26,7 +26,7 @@ function SubmissionsPage() {
       setError('')
 
       try {
-        const response = await fetch(`http://127.0.0.1:8080/admin/submissions?month=${month}`)
+        const response = await fetch(`http://127.0.0.1:8080/admin/submissions?month=${month}`, { headers: { 'X-Local-Admin': 'true' } })
         if (!response.ok) throw new Error('submissions loading failed')
 
         setSubmissions(await response.json())
@@ -61,7 +61,7 @@ function SubmissionsPage() {
     try {
       const response = await fetch('http://127.0.0.1:8080/admin/invoices/bulk-download', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
         body: JSON.stringify({ submissionIds: selectedIds }),
       })
       if (!response.ok) throw new Error('invoice download failed')

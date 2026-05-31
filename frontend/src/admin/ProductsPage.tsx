@@ -28,7 +28,7 @@ function ProductsPage() {
   const [error, setError] = useState('')
 
   const loadProducts = async () => {
-    const response = await fetch('http://127.0.0.1:8080/admin/products')
+    const response = await fetch('http://127.0.0.1:8080/admin/products', { headers: { 'X-Local-Admin': 'true' } })
     if (!response.ok) throw new Error('products loading failed')
     setProducts(await response.json())
   }
@@ -49,7 +49,7 @@ function ProductsPage() {
     try {
       const response = await fetch('http://127.0.0.1:8080/admin/products', {
         method: isNew ? 'POST' : 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
         body: JSON.stringify(editingProduct),
       })
       if (!response.ok) throw new Error('product saving failed')

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -53,15 +54,42 @@ func main() {
 	http.HandleFunc("/invoice/download", handleInvoiceDownload)
 	http.HandleFunc("/submissions", handleSubmission(submissionRepository, pricingRepository))
 	http.HandleFunc("/public/forms/", handlePublicForm(formRepository))
-	http.HandleFunc("/admin/submissions", handleAdminSubmissions(submissionRepository))
-	http.HandleFunc("/admin/invoices/bulk-download", handleBulkInvoiceDownload(submissionRepository))
-	http.HandleFunc("/admin/products", handleAdminProducts(productRepository))
-	http.HandleFunc("/admin/forms", handleAdminForms(formRepository))
+	http.Handle("/admin/submissions", requireLocalAdmin(handleAdminSubmissions(submissionRepository)))
+	http.Handle("/admin/invoices/bulk-download", requireLocalAdmin(handleBulkInvoiceDownload(submissionRepository)))
+	http.Handle("/admin/products", requireLocalAdmin(handleAdminProducts(productRepository)))
+	http.Handle("/admin/forms", requireLocalAdmin(handleAdminForms(formRepository)))
 
 	log.Printf("API server listening on %s", address)
 	if err := http.ListenAndServe(address, nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func requireLocalAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Local-Admin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		if !isLoopbackRequest(r) || r.Header.Get("X-Local-Admin") != "true" {
+			http.Error(w, "admin authentication required", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
