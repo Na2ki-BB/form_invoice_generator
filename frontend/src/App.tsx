@@ -24,6 +24,7 @@ function App() {
   const [customerInfo, setCustomerInfo] = useState(initialCustomerInfo)
   const [errors, setErrors] = useState<string[]>([])
   const [screen, setScreen] = useState<'input' | 'confirm' | 'complete'>('input')
+  const [submitError, setSubmitError] = useState('')
   const selectedProducts = products.filter((product) => product.quantity > 0)
   const totalAmount = products.reduce(
     (total, product) => total + product.unitPrice * product.quantity,
@@ -60,6 +61,37 @@ function App() {
     }
 
     return validationErrors
+  }
+
+  const handleSubmission = async () => {
+    setSubmitError('')
+
+    try {
+      const response = await fetch('http://127.0.0.1:8080/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...customerInfo,
+          items: selectedProducts.map((product) => ({
+            productId: product.id,
+            quantity: product.quantity,
+          })),
+        }),
+      })
+
+      if (!response.ok) throw new Error('submission failed')
+
+      const invoice = await response.blob()
+      const downloadUrl = URL.createObjectURL(invoice)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = 'invoice.xlsx'
+      link.click()
+      URL.revokeObjectURL(downloadUrl)
+      setScreen('complete')
+    } catch {
+      setSubmitError('送信に失敗しました。時間をおいてもう一度お試しください。')
+    }
   }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -117,8 +149,9 @@ function App() {
         <p className="total-amount">合計金額: {formatPrice(totalAmount)}</p>
         <div className="button-row">
           <button type="button" className="secondary-button" onClick={() => setScreen('input')}>戻る</button>
-          <button type="button" onClick={() => setScreen('complete')}>送信する</button>
+          <button type="button" onClick={handleSubmission}>送信する</button>
         </div>
+        {submitError && <p className="error-message" role="alert">{submitError}</p>}
       </main>
     )
   }

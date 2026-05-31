@@ -39,11 +39,11 @@ func TestGenerate(t *testing.T) {
 	assertCellValue(t, file, "C7", "東京都千代田区千代田1-1")
 	assertCellValue(t, file, "B10", "祈祷A")
 	assertCellValue(t, file, "C10", "2")
-	assertCellValue(t, file, "D10", "5000")
-	assertCellValue(t, file, "E10", "10000")
+	assertCellValue(t, file, "D10", "5,000")
+	assertCellValue(t, file, "E10", "10,000")
 	assertCellValue(t, file, "B11", "お守り")
 	assertCellValue(t, file, "E11", "800")
-	assertCellValue(t, file, "E16", "10800")
+	assertCellValue(t, file, "E16", "10,800")
 	assertCellValue(t, file, "B19", "動作確認用")
 }
 
