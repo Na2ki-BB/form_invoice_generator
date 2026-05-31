@@ -1,0 +1,17 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #213547;
+  background-color: #f7f7f7;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 32px;
+  background-color: #ffffff;
+  border-radius: 8px;
+}
