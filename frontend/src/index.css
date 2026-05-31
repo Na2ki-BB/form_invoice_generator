@@ -15,3 +15,119 @@ main {
   background-color: #ffffff;
   border-radius: 8px;
 }
+
+.product-list {
+
+  display: grid;
+
+  gap: 12px;
+
+}
+
+
+
+.product-row {
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 16px;
+
+  padding: 16px;
+
+  border: 1px solid #dddddd;
+
+  border-radius: 6px;
+
+}
+
+
+
+.product-row p {
+
+  margin: 4px 0 0;
+
+}
+
+
+
+.product-row label {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+}
+
+
+
+.product-row input {
+
+  width: 64px;
+
+  padding: 8px;
+
+}
+
+.customer-fields {
+
+  display: grid;
+
+  gap: 12px;
+
+}
+
+
+
+.customer-fields label {
+
+  display: grid;
+
+  gap: 6px;
+
+}
+
+
+
+.customer-fields span {
+
+  color: #b42318;
+
+  font-size: 0.8rem;
+
+}
+
+
+
+.customer-fields input,
+
+.customer-fields textarea {
+
+  box-sizing: border-box;
+
+  width: 100%;
+
+  padding: 8px;
+
+  border: 1px solid #bbbbbb;
+
+  border-radius: 4px;
+
+  font: inherit;
+
+}
+
+.total-amount {
+
+  text-align: right;
+
+  font-size: 1.2rem;
+
+  font-weight: bold;
+
+}
