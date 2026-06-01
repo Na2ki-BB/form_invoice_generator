@@ -34,7 +34,7 @@ function FormsPage() {
 
   return <main>
     <h1>フォーム管理</h1>{message && <p>{message}</p>}{error && <p className="error-message">{error}</p>}
-    <table className="submissions-table"><thead><tr><th>タイトル</th><th>公開URL</th><th>商品数</th><th>操作</th></tr></thead><tbody>{forms.map((form) => <tr key={form.id}><td>{form.title}</td><td>/forms/{form.publicSlug}</td><td>{form.productIds.length}</td><td><button type="button" onClick={() => { setEditingForm(form); setIsNew(false) }}>編集</button></td></tr>)}</tbody></table>
+    <table className="submissions-table"><thead><tr><th>タイトル</th><th>公開URL</th><th>商品数</th><th>操作</th></tr></thead><tbody>{forms.map((form) => <tr key={form.id}><td>{form.title}</td><td><a href={`/forms/${form.publicSlug}`}>/forms/{form.publicSlug}</a></td><td>{form.productIds.length}</td><td><button type="button" onClick={() => { setEditingForm(form); setIsNew(false) }}>編集</button></td></tr>)}</tbody></table>
     <h2>{isNew ? 'フォームを登録' : 'フォームを編集'}</h2>
     <form className="customer-fields" onSubmit={saveForm}>
       <label>タイトル<input required value={editingForm.title} onChange={(event) => setEditingForm({ ...editingForm, title: event.target.value })} /></label>

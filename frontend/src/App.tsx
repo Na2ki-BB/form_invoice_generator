@@ -16,6 +16,13 @@ const initialCustomerInfo: CustomerInfo = {
 
 const formatPrice = (price: number) => `${price.toLocaleString('ja-JP')}円`
 
+const getPublicFormSlug = () => {
+  const pathParts = window.location.pathname.split('/')
+  return pathParts.length === 3 && pathParts[1] === 'forms' && pathParts[2]
+    ? pathParts[2]
+    : 'default'
+}
+
 function App() {
   if (window.location.pathname === '/admin/submissions') {
     return <SubmissionsPage />
@@ -31,6 +38,7 @@ function App() {
 }
 
 function PublicFormPage() {
+  const formSlug = getPublicFormSlug()
   const [products, setProducts] = useState<Product[]>([])
   const [formTitle, setFormTitle] = useState('申込み請求フォーム')
   const [isLoading, setIsLoading] = useState(true)
@@ -48,7 +56,7 @@ function PublicFormPage() {
   useEffect(() => {
     const loadForm = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8080/public/forms/default')
+        const response = await fetch(`http://127.0.0.1:8080/public/forms/${encodeURIComponent(formSlug)}`)
         if (!response.ok) throw new Error('form loading failed')
 
         const publicForm: PublicForm = await response.json()
@@ -62,7 +70,7 @@ function PublicFormPage() {
     }
 
     void loadForm()
-  }, [])
+  }, [formSlug])
 
   const handleQuantityChange = (productId: string, quantity: number) => {
     setProducts((currentProducts) =>
@@ -108,6 +116,7 @@ function PublicFormPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...customerInfo,
+          formSlug,
           items: selectedProducts.map((product) => ({
             productId: product.id,
             quantity: product.quantity,
@@ -220,8 +229,8 @@ function PublicFormPage() {
                   数量
                   <input
                     type="number"
-                    min="0"
-                    max="10"
+                    min={product.minQuantity}
+                    max={product.maxQuantity}
                     value={product.quantity}
                     onChange={(event) =>
                       handleQuantityChange(product.id, Number(event.target.value))

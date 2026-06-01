@@ -18,6 +18,7 @@ import (
 )
 
 type submissionRequest struct {
+	FormSlug     string                  `json:"formSlug"`
 	CustomerName string                  `json:"customerName"`
 	CustomerKana string                  `json:"customerKana"`
 	PostalCode   string                  `json:"postalCode"`
@@ -366,10 +367,14 @@ func handleSubmission(repository *submission.Repository, pricingRepository *pric
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
+		if request.FormSlug == "" {
+			http.Error(w, "formSlug is required", http.StatusBadRequest)
+			return
+		}
 		items := make([]pricing.Item, 0, len(request.Items))
 		totalAmount := 0
 		for _, requestedItem := range request.Items {
-			item, err := pricingRepository.Calculate(r.Context(), requestedItem.ProductID, requestedItem.Quantity)
+			item, err := pricingRepository.CalculateForForm(r.Context(), request.FormSlug, requestedItem.ProductID, requestedItem.Quantity)
 			if err != nil {
 				http.Error(w, "invalid item", http.StatusBadRequest)
 				return
