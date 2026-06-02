@@ -25,11 +25,11 @@ type Rule struct {
 }
 
 type Item struct {
-	ProductID string
-	Name      string
-	UnitPrice int
-	Quantity  int
-	Amount    int
+	ProductID string `json:"productId"`
+	Name      string `json:"name"`
+	UnitPrice int    `json:"unitPrice"`
+	Quantity  int    `json:"quantity"`
+	Amount    int    `json:"amount"`
 }
 
 var products = map[string]Product{

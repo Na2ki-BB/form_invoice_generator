@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import FormsPage from './admin/FormsPage'
 import ProductsPage from './admin/ProductsPage'
 import SubmissionsPage from './admin/SubmissionsPage'
-import type { CustomerInfo, Product, PublicForm } from './types'
+import type { CustomerInfo, Product, PublicForm, Quote } from './types'
 
 const initialCustomerInfo: CustomerInfo = {
   customerName: '',
@@ -15,6 +15,7 @@ const initialCustomerInfo: CustomerInfo = {
 }
 
 const formatPrice = (price: number) => `${price.toLocaleString('ja-JP')}円`
+const emptyQuote: Quote = { items: [], totalAmount: 0 }
 
 const getPublicFormSlug = () => {
   const pathParts = window.location.pathname.split('/')
@@ -47,11 +48,18 @@ function PublicFormPage() {
   const [errors, setErrors] = useState<string[]>([])
   const [screen, setScreen] = useState<'input' | 'confirm' | 'complete'>('input')
   const [submitError, setSubmitError] = useState('')
+  const [quote, setQuote] = useState<Quote>(emptyQuote)
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false)
+  const [quoteError, setQuoteError] = useState('')
   const selectedProducts = products.filter((product) => product.quantity > 0)
-  const totalAmount = products.reduce(
-    (total, product) => total + product.unitPrice * product.quantity,
-    0,
-  )
+  const findQuoteItem = (product: Product) =>
+    quote.items.find((item) => item.productId === product.id && item.quantity === product.quantity)
+  const getDisplayedUnitPrice = (product: Product) => findQuoteItem(product)?.unitPrice ?? product.unitPrice
+  const getDisplayedAmount = (product: Product) => findQuoteItem(product)?.amount ?? product.unitPrice * product.quantity
+  const hasCurrentQuote = selectedProducts.every((product) => Boolean(findQuoteItem(product)))
+  const totalAmount = hasCurrentQuote
+    ? quote.totalAmount
+    : products.reduce((total, product) => total + product.unitPrice * product.quantity, 0)
 
   useEffect(() => {
     const loadForm = async () => {
@@ -71,6 +79,43 @@ function PublicFormPage() {
 
     void loadForm()
   }, [formSlug])
+
+  useEffect(() => {
+    const requestedItems = products
+      .filter((product) => product.quantity > 0)
+      .map((product) => ({ productId: product.id, quantity: product.quantity }))
+    if (requestedItems.length === 0) {
+      setQuote(emptyQuote)
+      setQuoteError('')
+      setIsQuoteLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const loadQuote = async () => {
+      setIsQuoteLoading(true)
+      setQuoteError('')
+      try {
+        const response = await fetch(`http://127.0.0.1:8080/public/forms/${encodeURIComponent(formSlug)}/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: requestedItems }),
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('quote loading failed')
+        setQuote(await response.json())
+      } catch {
+        if (!controller.signal.aborted) {
+          setQuoteError('金額の計算に失敗しました。時間をおいてもう一度お試しください。')
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsQuoteLoading(false)
+      }
+    }
+
+    void loadQuote()
+    return () => controller.abort()
+  }, [formSlug, products])
 
   const handleQuantityChange = (productId: string, quantity: number) => {
     setProducts((currentProducts) =>
@@ -102,6 +147,10 @@ function PublicFormPage() {
     if (!customerInfo.phone.trim()) validationErrors.push('電話番号を入力してください。')
     if (!products.some((product) => product.quantity > 0)) {
       validationErrors.push('少なくとも1つの商品を選んでください。')
+    } else if (isQuoteLoading) {
+      validationErrors.push('金額を計算しています。少し待ってから確認してください。')
+    } else if (quoteError || !hasCurrentQuote) {
+      validationErrors.push('金額を確認できませんでした。数量を確認してもう一度お試しください。')
     }
 
     return validationErrors
@@ -183,8 +232,8 @@ function PublicFormPage() {
               <div className="product-row" key={product.id}>
                 <strong>{product.name}</strong>
                 <span>
-                  {formatPrice(product.unitPrice)} × {product.quantity} ={' '}
-                  {formatPrice(product.unitPrice * product.quantity)}
+                  {formatPrice(getDisplayedUnitPrice(product))} × {product.quantity} ={' '}
+                  {formatPrice(getDisplayedAmount(product))}
                 </span>
               </div>
             ))}
@@ -223,7 +272,7 @@ function PublicFormPage() {
                 <div>
                   <strong>{product.name}</strong>
                   <p>{formatPrice(product.unitPrice)}（税込）</p>
-                  <p>小計: {formatPrice(product.unitPrice * product.quantity)}</p>
+                  <p>小計: {formatPrice(getDisplayedAmount(product))}</p>
                 </div>
                 <label>
                   数量
@@ -243,6 +292,8 @@ function PublicFormPage() {
         </section>
 
         <p className="total-amount">合計金額: {formatPrice(totalAmount)}</p>
+        {isQuoteLoading && <p>金額を計算しています。</p>}
+        {quoteError && <p className="error-message" role="alert">{quoteError}</p>}
 
         <section>
           <h2>申込者情報</h2>

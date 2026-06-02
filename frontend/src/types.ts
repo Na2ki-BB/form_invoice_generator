@@ -24,3 +24,16 @@ export type CustomerInfo = {
   email: string
   note: string
 }
+
+export type QuoteItem = {
+  productId: string
+  name: string
+  unitPrice: number
+  quantity: number
+  amount: number
+}
+
+export type Quote = {
+  items: QuoteItem[]
+  totalAmount: number
+}

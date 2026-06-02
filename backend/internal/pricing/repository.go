@@ -21,7 +21,7 @@ func (repository *Repository) Calculate(ctx context.Context, productID string, q
 		SELECT id, name, base_unit_price
 		FROM products
 		WHERE id = $1 AND is_active = TRUE
-	`, product.ID).Scan(&product.ID, &product.Name, &product.UnitPrice)
+	`, productID).Scan(&product.ID, &product.Name, &product.UnitPrice)
 	if err != nil {
 		return Item{}, fmt.Errorf("find pricing product: %w", err)
 	}
@@ -54,7 +54,7 @@ func (repository *Repository) calculateProduct(ctx context.Context, product Prod
 		FROM product_price_rules
 		WHERE product_id = $1 AND is_active = TRUE
 		ORDER BY priority DESC, id
-	`, productID)
+	`, product.ID)
 	if err != nil {
 		return Item{}, fmt.Errorf("find pricing rules: %w", err)
 	}
