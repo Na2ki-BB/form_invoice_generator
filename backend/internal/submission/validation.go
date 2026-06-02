@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func Validate(submission Submission) error {
+func Validate(submission Submission, maxItems int) error {
 	requiredFields := []struct {
 		name  string
 		value string
@@ -22,6 +22,9 @@ func Validate(submission Submission) error {
 	}
 	if len(submission.Items) == 0 {
 		return fmt.Errorf("at least one item is required")
+	}
+	if len(submission.Items) > maxItems {
+		return fmt.Errorf("submission supports up to %d items", maxItems)
 	}
 	return nil
 }

@@ -13,16 +13,18 @@ import (
 func TestGenerateArchive(t *testing.T) {
 	generated, err := GenerateArchive([]submission.Detail{
 		{
-			ID:           12,
-			CustomerName: "山田 太郎",
-			SubmittedAt:  time.Date(2026, time.June, 1, 0, 0, 0, 0, time.Local),
-			Items:        []pricing.Item{{ProductID: "prayer-a", Name: "祈祷A", UnitPrice: 5000, Quantity: 1, Amount: 5000}},
+			ID:            12,
+			InvoiceNumber: "INV-202606-000012",
+			CustomerName:  "山田 太郎",
+			SubmittedAt:   time.Date(2026, time.June, 1, 0, 0, 0, 0, time.Local),
+			Items:         []pricing.Item{{ProductID: "prayer-a", Name: "祈祷A", UnitPrice: 5000, Quantity: 1, Amount: 5000}},
 		},
 		{
-			ID:           34,
-			CustomerName: "鈴木 花子",
-			SubmittedAt:  time.Date(2026, time.June, 2, 0, 0, 0, 0, time.Local),
-			Items:        []pricing.Item{{ProductID: "ofuda", Name: "御札", UnitPrice: 950, Quantity: 2, Amount: 1900}},
+			ID:            34,
+			InvoiceNumber: "INV-202606-000034",
+			CustomerName:  "鈴木 花子",
+			SubmittedAt:   time.Date(2026, time.June, 2, 0, 0, 0, 0, time.Local),
+			Items:         []pricing.Item{{ProductID: "ofuda", Name: "御札", UnitPrice: 950, Quantity: 2, Amount: 1900}},
 		},
 	})
 	if err != nil {

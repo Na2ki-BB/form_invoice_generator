@@ -26,11 +26,12 @@ func TestValidate(t *testing.T) {
 		{name: "address is required", submission: withAddress(valid, "\t"), wantError: true},
 		{name: "phone is required", submission: withCustomerPhone(valid, ""), wantError: true},
 		{name: "item is required", submission: withItems(valid, nil), wantError: true},
+		{name: "six items are rejected", submission: withItems(valid, []pricing.Item{{}, {}, {}, {}, {}, {}}), wantError: true},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Validate(test.submission)
+			err := Validate(test.submission, 5)
 			if (err != nil) != test.wantError {
 				t.Fatalf("Validate() error = %v, wantError = %v", err, test.wantError)
 			}

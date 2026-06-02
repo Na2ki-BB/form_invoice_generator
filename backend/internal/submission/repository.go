@@ -14,6 +14,7 @@ type Repository struct {
 }
 
 type Submission struct {
+	FormID        int64
 	CustomerName  string
 	CustomerKana  string
 	CustomerEmail string
@@ -29,16 +30,33 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
-func (repository *Repository) Create(ctx context.Context, submission Submission) (int64, error) {
+type Created struct {
+	ID            int64
+	InvoiceNumber string
+	SubmittedAt   time.Time
+}
+
+func (repository *Repository) Create(ctx context.Context, submission Submission) (Created, error) {
 	transaction, err := repository.db.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("begin submission transaction: %w", err)
+		return Created{}, fmt.Errorf("begin submission transaction: %w", err)
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
 
-	var submissionID int64
+	var created Created
 	err = transaction.QueryRow(ctx, `
+		SELECT nextval(pg_get_serial_sequence('submissions', 'id')), CURRENT_TIMESTAMP
+	`).Scan(&created.ID, &created.SubmittedAt)
+	if err != nil {
+		return Created{}, fmt.Errorf("reserve submission id: %w", err)
+	}
+	created.InvoiceNumber = FormatInvoiceNumber(created.ID, created.SubmittedAt)
+
+	_, err = transaction.Exec(ctx, `
 		INSERT INTO submissions (
+			id,
+			form_id,
+			invoice_number,
 			customer_name,
 			customer_kana,
 			customer_email,
@@ -46,10 +64,13 @@ func (repository *Repository) Create(ctx context.Context, submission Submission)
 			postal_code,
 			address,
 			note,
-			total_amount
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		RETURNING id
+			total_amount,
+			submitted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`,
+		created.ID,
+		submission.FormID,
+		created.InvoiceNumber,
 		submission.CustomerName,
 		submission.CustomerKana,
 		submission.CustomerEmail,
@@ -58,9 +79,10 @@ func (repository *Repository) Create(ctx context.Context, submission Submission)
 		submission.Address,
 		submission.Note,
 		submission.TotalAmount,
-	).Scan(&submissionID)
+		created.SubmittedAt,
+	)
 	if err != nil {
-		return 0, fmt.Errorf("insert submission: %w", err)
+		return Created{}, fmt.Errorf("insert submission: %w", err)
 	}
 
 	for _, item := range submission.Items {
@@ -74,7 +96,7 @@ func (repository *Repository) Create(ctx context.Context, submission Submission)
 				total_amount_snapshot
 			) VALUES ($1, $2, $3, $4, $5, $6)
 		`,
-			submissionID,
+			created.ID,
 			item.ProductID,
 			item.Name,
 			item.Quantity,
@@ -82,18 +104,26 @@ func (repository *Repository) Create(ctx context.Context, submission Submission)
 			item.Amount,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("insert submission item: %w", err)
+			return Created{}, fmt.Errorf("insert submission item: %w", err)
 		}
 	}
 
 	if err := transaction.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("commit submission transaction: %w", err)
+		return Created{}, fmt.Errorf("commit submission transaction: %w", err)
 	}
-	return submissionID, nil
+	return created, nil
+}
+
+func FormatInvoiceNumber(id int64, submittedAt time.Time) string {
+	jst := time.FixedZone("JST", 9*60*60)
+	return fmt.Sprintf("INV-%s-%06d", submittedAt.In(jst).Format("200601"), id)
 }
 
 type Summary struct {
 	ID            int64     `json:"id"`
+	InvoiceNumber string    `json:"invoiceNumber"`
+	FormTitle     string    `json:"formTitle"`
+	FormSlug      string    `json:"formSlug"`
 	CustomerName  string    `json:"customerName"`
 	CustomerPhone string    `json:"customerPhone"`
 	TotalAmount   int       `json:"totalAmount"`
@@ -106,10 +136,11 @@ func (repository *Repository) ListByMonth(ctx context.Context, month time.Time) 
 	monthEnd := monthStart.AddDate(0, 1, 0)
 
 	rows, err := repository.db.Query(ctx, `
-		SELECT id, customer_name, customer_phone, total_amount, submitted_at, status
-		FROM submissions
-		WHERE submitted_at >= $1 AND submitted_at < $2
-		ORDER BY submitted_at DESC, id DESC
+		SELECT s.id, s.invoice_number, f.title, f.public_slug, s.customer_name, s.customer_phone, s.total_amount, s.submitted_at, s.status
+		FROM submissions s
+		JOIN forms f ON f.id = s.form_id
+		WHERE s.submitted_at >= $1 AND s.submitted_at < $2
+		ORDER BY s.submitted_at DESC, s.id DESC
 	`, monthStart, monthEnd)
 	if err != nil {
 		return nil, fmt.Errorf("list submissions by month: %w", err)
@@ -121,6 +152,9 @@ func (repository *Repository) ListByMonth(ctx context.Context, month time.Time) 
 		var summary Summary
 		if err := rows.Scan(
 			&summary.ID,
+			&summary.InvoiceNumber,
+			&summary.FormTitle,
+			&summary.FormSlug,
 			&summary.CustomerName,
 			&summary.CustomerPhone,
 			&summary.TotalAmount,
@@ -138,19 +172,21 @@ func (repository *Repository) ListByMonth(ctx context.Context, month time.Time) 
 }
 
 type Detail struct {
-	ID           int64
-	CustomerName string
-	PostalCode   string
-	Address      string
-	Note         string
-	SubmittedAt  time.Time
-	Items        []pricing.Item
+	ID            int64
+	InvoiceNumber string
+	CustomerName  string
+	PostalCode    string
+	Address       string
+	Note          string
+	SubmittedAt   time.Time
+	Items         []pricing.Item
 }
 
 func (repository *Repository) FindDetailsByIDs(ctx context.Context, ids []int64) ([]Detail, error) {
 	rows, err := repository.db.Query(ctx, `
 		SELECT
 			s.id,
+			s.invoice_number,
 			s.customer_name,
 			s.postal_code,
 			s.address,
@@ -178,9 +214,11 @@ func (repository *Repository) FindDetailsByIDs(ctx context.Context, ids []int64)
 			item         pricing.Item
 		)
 		var customerName, postalCode, address, note string
+		var detailsInvoiceNumber string
 		var submittedAt time.Time
 		if err := rows.Scan(
 			&submissionID,
+			&detailsInvoiceNumber,
 			&customerName,
 			&postalCode,
 			&address,
@@ -197,12 +235,13 @@ func (repository *Repository) FindDetailsByIDs(ctx context.Context, ids []int64)
 
 		if len(details) == 0 || details[len(details)-1].ID != submissionID {
 			details = append(details, Detail{
-				ID:           submissionID,
-				CustomerName: customerName,
-				PostalCode:   postalCode,
-				Address:      address,
-				Note:         note,
-				SubmittedAt:  submittedAt,
+				ID:            submissionID,
+				InvoiceNumber: detailsInvoiceNumber,
+				CustomerName:  customerName,
+				PostalCode:    postalCode,
+				Address:       address,
+				Note:          note,
+				SubmittedAt:   submittedAt,
 			})
 		}
 		details[len(details)-1].Items = append(details[len(details)-1].Items, item)

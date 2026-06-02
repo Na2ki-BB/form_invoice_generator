@@ -64,7 +64,7 @@ func newHandler(submissionRepository *submission.Repository, formRepository *for
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/invoice/download", handleInvoiceDownload)
-	mux.HandleFunc("/submissions", handleSubmission(submissionRepository, pricingRepository))
+	mux.HandleFunc("/submissions", handleSubmission(submissionRepository, formRepository, pricingRepository))
 	mux.HandleFunc("/public/forms/", handlePublicForm(formRepository, pricingRepository))
 	mux.Handle("/admin/submissions", requireLocalAdmin(handleAdminSubmissions(submissionRepository)))
 	mux.Handle("/admin/invoices/bulk-download", requireLocalAdmin(handleBulkInvoiceDownload(submissionRepository)))
@@ -167,6 +167,10 @@ func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 		var requestedForm formrepository.AdminForm
 		if err := json.NewDecoder(r.Body).Decode(&requestedForm); err != nil || requestedForm.Title == "" || requestedForm.PublicSlug == "" {
 			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		if err := formrepository.ValidateProductCount(requestedForm, invoice.MaxItems); err != nil {
+			http.Error(w, "too many form products", http.StatusBadRequest)
 			return
 		}
 		var err error
@@ -412,7 +416,7 @@ func calculateItemsForForm(ctx context.Context, repository *pricing.Repository, 
 	return items, totalAmount, nil
 }
 
-func handleSubmission(repository *submission.Repository, pricingRepository *pricing.Repository) http.HandlerFunc {
+func handleSubmission(repository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -436,6 +440,11 @@ func handleSubmission(repository *submission.Repository, pricingRepository *pric
 			http.Error(w, "formSlug is required", http.StatusBadRequest)
 			return
 		}
+		formID, err := formRepository.FindIDBySlug(r.Context(), request.FormSlug)
+		if err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
 		items, totalAmount, err := calculateItemsForForm(r.Context(), pricingRepository, request.FormSlug, request.Items)
 		if err != nil {
 			http.Error(w, "invalid item", http.StatusBadRequest)
@@ -443,6 +452,7 @@ func handleSubmission(repository *submission.Repository, pricingRepository *pric
 		}
 
 		requestedSubmission := submission.Submission{
+			FormID:        formID,
 			CustomerName:  request.CustomerName,
 			CustomerKana:  request.CustomerKana,
 			CustomerEmail: request.Email,
@@ -453,22 +463,22 @@ func handleSubmission(repository *submission.Repository, pricingRepository *pric
 			TotalAmount:   totalAmount,
 			Items:         items,
 		}
-		if err := submission.Validate(requestedSubmission); err != nil {
+		if err := submission.Validate(requestedSubmission, invoice.MaxItems); err != nil {
 			http.Error(w, "invalid submission", http.StatusBadRequest)
 			return
 		}
 
-		submissionID, err := repository.Create(r.Context(), requestedSubmission)
+		created, err := repository.Create(r.Context(), requestedSubmission)
 		if err != nil {
 			log.Printf("save submission: %v", err)
 			http.Error(w, "failed to save submission", http.StatusInternalServerError)
 			return
 		}
-		log.Printf("saved submission: id=%d customer=%q items=%d total=%d", submissionID, request.CustomerName, len(items), totalAmount)
+		log.Printf("saved submission: id=%d invoice=%q customer=%q items=%d total=%d", created.ID, created.InvoiceNumber, request.CustomerName, len(items), totalAmount)
 
 		generated, err := invoice.Generate(invoice.Data{
-			InvoiceNumber: "INV-TEMP-0001",
-			InvoiceDate:   time.Now(),
+			InvoiceNumber: created.InvoiceNumber,
+			InvoiceDate:   created.SubmittedAt,
 			CustomerName:  request.CustomerName,
 			PostalCode:    request.PostalCode,
 			Address:       request.Address,

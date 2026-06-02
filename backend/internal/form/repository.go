@@ -35,6 +35,22 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+func (repository *Repository) FindIDBySlug(ctx context.Context, slug string) (int64, error) {
+	var id int64
+	err := repository.db.QueryRow(ctx, `
+		SELECT id
+		FROM forms
+		WHERE public_slug = $1 AND is_active = TRUE
+	`, slug).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find form id: %w", err)
+	}
+	return id, nil
+}
+
 func (repository *Repository) FindBySlug(ctx context.Context, slug string) (Form, error) {
 	var result Form
 	err := repository.db.QueryRow(ctx, `

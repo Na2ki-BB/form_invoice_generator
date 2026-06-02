@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 
 type SubmissionSummary = {
   id: number
+  invoiceNumber: string
+  formTitle: string
+  formSlug: string
   customerName: string
   customerPhone: string
   totalAmount: number
@@ -104,6 +107,8 @@ function SubmissionsPage() {
           <thead>
             <tr>
               <th>選択</th>
+              <th>請求書番号</th>
+              <th>フォーム</th>
               <th>受付日時</th>
               <th>氏名</th>
               <th>電話番号</th>
@@ -122,6 +127,8 @@ function SubmissionsPage() {
                     aria-label={`${submission.customerName}を選択`}
                   />
                 </td>
+                <td>{submission.invoiceNumber}</td>
+                <td>{submission.formTitle} ({submission.formSlug})</td>
                 <td>{new Date(submission.submittedAt).toLocaleString('ja-JP')}</td>
                 <td>{submission.customerName}</td>
                 <td>{submission.customerPhone}</td>

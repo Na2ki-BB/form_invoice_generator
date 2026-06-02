@@ -14,7 +14,7 @@ func GenerateArchive(submissions []submission.Detail) ([]byte, error) {
 
 	for _, detail := range submissions {
 		generated, err := Generate(Data{
-			InvoiceNumber: fmt.Sprintf("INV-TEMP-%04d", detail.ID),
+			InvoiceNumber: detail.InvoiceNumber,
 			InvoiceDate:   detail.SubmittedAt,
 			CustomerName:  detail.CustomerName,
 			PostalCode:    detail.PostalCode,

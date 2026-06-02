@@ -58,3 +58,13 @@ func assertCellValue(t *testing.T, file *excelize.File, cell string, want string
 		t.Fatalf("GetCellValue(%s) = %q, want %q", cell, got, want)
 	}
 }
+
+func TestGenerateRejectsMoreThanMaxItems(t *testing.T) {
+	items := make([]pricing.Item, MaxItems+1)
+	for index := range items {
+		items[index] = pricing.Item{Name: "商品", UnitPrice: 100, Quantity: 1, Amount: 100}
+	}
+	if _, err := Generate(Data{Items: items}); err == nil {
+		t.Fatal("Generate() error = nil, want too many items error")
+	}
+}

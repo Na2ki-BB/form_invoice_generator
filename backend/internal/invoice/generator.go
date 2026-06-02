@@ -13,6 +13,8 @@ import (
 
 const sheetName = "請求書"
 
+const MaxItems = 5
+
 type Data struct {
 	InvoiceNumber string
 	InvoiceDate   time.Time
@@ -57,8 +59,8 @@ func Generate(data Data) ([]byte, error) {
 	totalAmount := 0
 	for index, item := range data.Items {
 		row := 10 + index
-		if row > 14 {
-			return nil, fmt.Errorf("invoice supports up to 5 items")
+		if index >= MaxItems {
+			return nil, fmt.Errorf("invoice supports up to %d items", MaxItems)
 		}
 		if err := setValue(file, fmt.Sprintf("B%d", row), item.Name); err != nil {
 			return nil, err
