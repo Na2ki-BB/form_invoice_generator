@@ -172,14 +172,25 @@ func (repository *Repository) ListByMonth(ctx context.Context, month time.Time) 
 }
 
 type Detail struct {
-	ID            int64
-	InvoiceNumber string
-	CustomerName  string
-	PostalCode    string
-	Address       string
-	Note          string
-	SubmittedAt   time.Time
-	Items         []pricing.Item
+	ID            int64          `json:"id"`
+	InvoiceNumber string         `json:"invoiceNumber"`
+	CustomerName  string         `json:"customerName"`
+	PostalCode    string         `json:"postalCode"`
+	Address       string         `json:"address"`
+	Note          string         `json:"note"`
+	SubmittedAt   time.Time      `json:"submittedAt"`
+	Items         []pricing.Item `json:"items"`
+}
+
+func (repository *Repository) FindDetailByID(ctx context.Context, id int64) (Detail, error) {
+	details, err := repository.FindDetailsByIDs(ctx, []int64{id})
+	if err != nil {
+		return Detail{}, err
+	}
+	if len(details) == 0 {
+		return Detail{}, fmt.Errorf("submission not found: %d", id)
+	}
+	return details[0], nil
 }
 
 func (repository *Repository) FindDetailsByIDs(ctx context.Context, ids []int64) ([]Detail, error) {

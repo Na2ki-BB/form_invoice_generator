@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,8 +52,9 @@ func main() {
 	formRepository := formrepository.NewRepository(db)
 	pricingRepository := pricing.NewRepository(db)
 	productRepository := product.NewRepository(db)
+	priceRuleRepository := pricing.NewRuleRepository(db)
 
-	handler := newHandler(submissionRepository, formRepository, pricingRepository, productRepository)
+	handler := newHandler(submissionRepository, formRepository, pricingRepository, priceRuleRepository, productRepository)
 
 	log.Printf("API server listening on %s", address)
 	if err := http.ListenAndServe(address, handler); err != nil {
@@ -60,15 +62,17 @@ func main() {
 	}
 }
 
-func newHandler(submissionRepository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository, productRepository *product.Repository) http.Handler {
+func newHandler(submissionRepository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository, priceRuleRepository *pricing.RuleRepository, productRepository *product.Repository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/invoice/download", handleInvoiceDownload)
 	mux.HandleFunc("/submissions", handleSubmission(submissionRepository, formRepository, pricingRepository))
 	mux.HandleFunc("/public/forms/", handlePublicForm(formRepository, pricingRepository))
 	mux.Handle("/admin/submissions", requireLocalAdmin(handleAdminSubmissions(submissionRepository)))
+	mux.Handle("/admin/submissions/", requireLocalAdmin(handleAdminSubmissionDetail(submissionRepository)))
 	mux.Handle("/admin/invoices/bulk-download", requireLocalAdmin(handleBulkInvoiceDownload(submissionRepository)))
 	mux.Handle("/admin/products", requireLocalAdmin(handleAdminProducts(productRepository)))
+	mux.Handle("/admin/price-rules", requireLocalAdmin(handleAdminPriceRules(priceRuleRepository)))
 	mux.Handle("/admin/forms", requireLocalAdmin(handleAdminForms(formRepository)))
 	return mux
 }
@@ -169,8 +173,8 @@ func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
-		if err := formrepository.ValidateProductCount(requestedForm, invoice.MaxItems); err != nil {
-			http.Error(w, "too many form products", http.StatusBadRequest)
+		if err := formrepository.Validate(requestedForm, invoice.MaxItems); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
 		var err error
@@ -188,6 +192,63 @@ func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, requestedForm)
+	}
+}
+
+func handleAdminPriceRules(repository *pricing.RuleRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		if r.Method == http.MethodGet {
+			productID := r.URL.Query().Get("productId")
+			if productID == "" {
+				http.Error(w, "productId is required", http.StatusBadRequest)
+				return
+			}
+			rules, err := repository.ListByProduct(r.Context(), productID)
+			if err != nil {
+				log.Printf("list price rules: %v", err)
+				http.Error(w, "failed to list price rules", http.StatusInternalServerError)
+				return
+			}
+			if rules == nil {
+				rules = []pricing.AdminRule{}
+			}
+			writeJSON(w, http.StatusOK, rules)
+			return
+		}
+
+		var requestedRule pricing.AdminRule
+		if err := json.NewDecoder(r.Body).Decode(&requestedRule); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := pricing.ValidateAdminRule(requestedRule); err != nil {
+			http.Error(w, "invalid price rule", http.StatusBadRequest)
+			return
+		}
+
+		var err error
+		if r.Method == http.MethodPost {
+			requestedRule.ID, err = repository.Create(r.Context(), requestedRule)
+		} else if r.Method == http.MethodPut {
+			err = repository.Update(r.Context(), requestedRule)
+		} else {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err != nil {
+			log.Printf("save price rule: %v", err)
+			http.Error(w, "failed to save price rule", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, requestedRule)
 	}
 }
 
@@ -220,7 +281,7 @@ func handleAdminProducts(repository *product.Repository) http.HandlerFunc {
 			http.Error(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if requestedProduct.ID == "" || requestedProduct.Name == "" || requestedProduct.Category == "" || requestedProduct.BaseUnitPrice < 0 {
+		if err := product.Validate(requestedProduct); err != nil {
 			http.Error(w, "invalid product", http.StatusBadRequest)
 			return
 		}
@@ -294,6 +355,28 @@ func handleBulkInvoiceDownload(repository *submission.Repository) http.HandlerFu
 		w.Header().Set("Content-Disposition", `attachment; filename="invoices.zip"`)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(generated)
+	}
+}
+
+func handleAdminSubmissionDetail(repository *submission.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		idText := strings.TrimPrefix(r.URL.Path, "/admin/submissions/")
+		id, err := strconv.ParseInt(idText, 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "invalid submission id", http.StatusBadRequest)
+			return
+		}
+		detail, err := repository.FindDetailByID(r.Context(), id)
+		if err != nil {
+			http.Error(w, "submission not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, detail)
 	}
 }
 

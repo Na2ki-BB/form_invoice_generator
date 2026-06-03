@@ -34,6 +34,7 @@ func TestPublicAPIsIntegration(t *testing.T) {
 		submission.NewRepository(db),
 		formrepository.NewRepository(db),
 		pricing.NewRepository(db),
+		pricing.NewRuleRepository(db),
 		product.NewRepository(db),
 	)
 

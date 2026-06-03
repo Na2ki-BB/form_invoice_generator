@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import FormsPage from './admin/FormsPage'
+import PriceRulesPage from './admin/PriceRulesPage'
 import ProductsPage from './admin/ProductsPage'
+import SubmissionDetailPage from './admin/SubmissionDetailPage'
 import SubmissionsPage from './admin/SubmissionsPage'
 import type { CustomerInfo, Product, PublicForm, Quote } from './types'
 
@@ -28,8 +30,15 @@ function App() {
   if (window.location.pathname === '/admin/submissions') {
     return <SubmissionsPage />
   }
+  if (window.location.pathname.startsWith('/admin/submissions/')) {
+    const submissionId = Number(window.location.pathname.replace('/admin/submissions/', ''))
+    return <SubmissionDetailPage submissionId={submissionId} />
+  }
   if (window.location.pathname === '/admin/products') {
     return <ProductsPage />
+  }
+  if (window.location.pathname === '/admin/price-rules') {
+    return <PriceRulesPage />
   }
   if (window.location.pathname === '/admin/forms') {
     return <FormsPage />

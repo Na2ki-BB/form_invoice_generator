@@ -66,6 +66,7 @@ function ProductsPage() {
   return (
     <main>
       <h1>商品管理</h1>
+      <p><a href="/admin/price-rules">価格ルール管理へ</a></p>
       {message && <p>{message}</p>}
       {error && <p className="error-message" role="alert">{error}</p>}
 

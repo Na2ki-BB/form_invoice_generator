@@ -127,7 +127,7 @@ function SubmissionsPage() {
                     aria-label={`${submission.customerName}を選択`}
                   />
                 </td>
-                <td>{submission.invoiceNumber}</td>
+                <td><a href={`/admin/submissions/${submission.id}`}>{submission.invoiceNumber}</a></td>
                 <td>{submission.formTitle} ({submission.formSlug})</td>
                 <td>{new Date(submission.submittedAt).toLocaleString('ja-JP')}</td>
                 <td>{submission.customerName}</td>

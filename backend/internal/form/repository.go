@@ -132,8 +132,14 @@ func (repository *Repository) List(ctx context.Context) ([]AdminForm, error) {
 }
 
 func (repository *Repository) Create(ctx context.Context, form AdminForm) (int64, error) {
+	transaction, err := repository.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin form transaction: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+
 	var formID int64
-	err := repository.db.QueryRow(ctx, `
+	err = transaction.QueryRow(ctx, `
 		INSERT INTO forms (owner_id, title, description, public_slug, is_active)
 		VALUES (1, $1, $2, $3, $4)
 		RETURNING id
@@ -141,14 +147,23 @@ func (repository *Repository) Create(ctx context.Context, form AdminForm) (int64
 	if err != nil {
 		return 0, fmt.Errorf("create form: %w", err)
 	}
-	if err := repository.replaceProducts(ctx, formID, form.ProductIDs); err != nil {
+	if err := replaceProducts(ctx, transaction, formID, form.ProductIDs); err != nil {
 		return 0, err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit form transaction: %w", err)
 	}
 	return formID, nil
 }
 
 func (repository *Repository) Update(ctx context.Context, form AdminForm) error {
-	result, err := repository.db.Exec(ctx, `
+	transaction, err := repository.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin form transaction: %w", err)
+	}
+	defer func() { _ = transaction.Rollback(ctx) }()
+
+	result, err := transaction.Exec(ctx, `
 		UPDATE forms SET title = $2, description = $3, public_slug = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, form.ID, form.Title, form.Description, form.PublicSlug, form.IsActive)
@@ -158,16 +173,16 @@ func (repository *Repository) Update(ctx context.Context, form AdminForm) error 
 	if result.RowsAffected() == 0 {
 		return fmt.Errorf("form not found: %d", form.ID)
 	}
-	return repository.replaceProducts(ctx, form.ID, form.ProductIDs)
+	if err := replaceProducts(ctx, transaction, form.ID, form.ProductIDs); err != nil {
+		return err
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return fmt.Errorf("commit form transaction: %w", err)
+	}
+	return nil
 }
 
-func (repository *Repository) replaceProducts(ctx context.Context, formID int64, productIDs []string) error {
-	transaction, err := repository.db.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin form products transaction: %w", err)
-	}
-	defer func() { _ = transaction.Rollback(ctx) }()
-
+func replaceProducts(ctx context.Context, transaction pgx.Tx, formID int64, productIDs []string) error {
 	if _, err := transaction.Exec(ctx, `DELETE FROM form_products WHERE form_id = $1`, formID); err != nil {
 		return fmt.Errorf("delete form products: %w", err)
 	}
@@ -178,9 +193,6 @@ func (repository *Repository) replaceProducts(ctx context.Context, formID int64,
 		`, formID, productID, (index+1)*10); err != nil {
 			return fmt.Errorf("insert form product: %w", err)
 		}
-	}
-	if err := transaction.Commit(ctx); err != nil {
-		return fmt.Errorf("commit form products transaction: %w", err)
 	}
 	return nil
 }
