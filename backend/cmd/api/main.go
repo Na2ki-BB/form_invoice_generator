@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -35,6 +37,11 @@ type submissionRequestItem struct {
 	ProductID string `json:"productId"`
 	Quantity  int    `json:"quantity"`
 }
+
+const (
+	defaultAllowedOrigin = "http://127.0.0.1:5173"
+	maxJSONBodyBytes     = 64 * 1024
+)
 
 func main() {
 	const address = ":8080"
@@ -65,7 +72,6 @@ func main() {
 func newHandler(submissionRepository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository, priceRuleRepository *pricing.RuleRepository, productRepository *product.Repository) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
-	mux.HandleFunc("/invoice/download", handleInvoiceDownload)
 	mux.HandleFunc("/submissions", handleSubmission(submissionRepository, formRepository, pricingRepository))
 	mux.HandleFunc("/public/forms/", handlePublicForm(formRepository, pricingRepository))
 	mux.Handle("/admin/submissions", requireLocalAdmin(handleAdminSubmissions(submissionRepository)))
@@ -77,13 +83,49 @@ func newHandler(submissionRepository *submission.Repository, formRepository *for
 	return mux
 }
 
+func configuredAllowedOrigin() string {
+	allowedOrigin := strings.TrimSpace(os.Getenv("APP_CORS_ALLOWED_ORIGIN"))
+	if allowedOrigin == "" {
+		return defaultAllowedOrigin
+	}
+	return allowedOrigin
+}
+
+func setCORSHeaders(w http.ResponseWriter, methods string, headers string) {
+	w.Header().Set("Access-Control-Allow-Origin", configuredAllowedOrigin())
+	w.Header().Set("Access-Control-Allow-Methods", methods)
+	if headers != "" {
+		w.Header().Set("Access-Control-Allow-Headers", headers)
+	}
+}
+
+func handleCORSPreflight(w http.ResponseWriter, r *http.Request, methods string, headers string) bool {
+	setCORSHeaders(w, methods, headers)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return true
+	}
+	return false
+}
+
+func decodeJSONRequest(w http.ResponseWriter, r *http.Request, destination any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 func requireLocalAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Local-Admin")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type, X-Local-Admin") {
 			return
 		}
 
@@ -110,48 +152,9 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-func handleInvoiceDownload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	prayer, err := pricing.Calculate("prayer-a", 1)
-	if err != nil {
-		http.Error(w, "failed to calculate invoice", http.StatusInternalServerError)
-		return
-	}
-	ofuda, err := pricing.Calculate("ofuda", 2)
-	if err != nil {
-		http.Error(w, "failed to calculate invoice", http.StatusInternalServerError)
-		return
-	}
-
-	generated, err := invoice.Generate(invoice.Data{
-		InvoiceNumber: "INV-TEST-0001",
-		InvoiceDate:   time.Now(),
-		CustomerName:  "山田 太郎",
-		PostalCode:    "100-0001",
-		Address:       "東京都千代田区千代田1-1",
-		Note:          "固定データで生成した請求書です。",
-		Items:         []pricing.Item{prayer, ofuda},
-	})
-	if err != nil {
-		log.Printf("generate invoice: %v", err)
-		http.Error(w, "failed to generate invoice", http.StatusInternalServerError)
-		return
-	}
-
-	writeInvoice(w, generated, "invoice_test.xlsx")
-}
-
 func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type") {
 			return
 		}
 		if r.Method == http.MethodGet {
@@ -169,7 +172,10 @@ func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 		}
 
 		var requestedForm formrepository.AdminForm
-		if err := json.NewDecoder(r.Body).Decode(&requestedForm); err != nil || requestedForm.Title == "" || requestedForm.PublicSlug == "" {
+		if !decodeJSONRequest(w, r, &requestedForm) {
+			return
+		}
+		if requestedForm.Title == "" || requestedForm.PublicSlug == "" {
 			http.Error(w, "invalid form", http.StatusBadRequest)
 			return
 		}
@@ -197,11 +203,7 @@ func handleAdminForms(repository *formrepository.Repository) http.HandlerFunc {
 
 func handleAdminPriceRules(repository *pricing.RuleRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type") {
 			return
 		}
 
@@ -225,8 +227,7 @@ func handleAdminPriceRules(repository *pricing.RuleRepository) http.HandlerFunc 
 		}
 
 		var requestedRule pricing.AdminRule
-		if err := json.NewDecoder(r.Body).Decode(&requestedRule); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+		if !decodeJSONRequest(w, r, &requestedRule) {
 			return
 		}
 		if err := pricing.ValidateAdminRule(requestedRule); err != nil {
@@ -254,11 +255,7 @@ func handleAdminPriceRules(repository *pricing.RuleRepository) http.HandlerFunc 
 
 func handleAdminProducts(repository *product.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type") {
 			return
 		}
 
@@ -277,8 +274,7 @@ func handleAdminProducts(repository *product.Repository) http.HandlerFunc {
 		}
 
 		var requestedProduct product.Product
-		if err := json.NewDecoder(r.Body).Decode(&requestedProduct); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+		if !decodeJSONRequest(w, r, &requestedProduct) {
 			return
 		}
 		if err := product.Validate(requestedProduct); err != nil {
@@ -313,11 +309,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func handleBulkInvoiceDownload(repository *submission.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "POST, OPTIONS", "Content-Type") {
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -328,7 +320,10 @@ func handleBulkInvoiceDownload(repository *submission.Repository) http.HandlerFu
 		var request struct {
 			SubmissionIDs []int64 `json:"submissionIds"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.SubmissionIDs) == 0 {
+		if !decodeJSONRequest(w, r, &request) {
+			return
+		}
+		if len(request.SubmissionIDs) == 0 {
 			http.Error(w, "submissionIds are required", http.StatusBadRequest)
 			return
 		}
@@ -360,7 +355,7 @@ func handleBulkInvoiceDownload(repository *submission.Repository) http.HandlerFu
 
 func handleAdminSubmissionDetail(repository *submission.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		setCORSHeaders(w, "GET, OPTIONS", "")
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -382,7 +377,7 @@ func handleAdminSubmissionDetail(repository *submission.Repository) http.Handler
 
 func handleAdminSubmissions(repository *submission.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
+		setCORSHeaders(w, "GET, OPTIONS", "")
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -412,11 +407,7 @@ func handleAdminSubmissions(repository *submission.Repository) http.HandlerFunc 
 
 func handlePublicForm(repository *formrepository.Repository, pricingRepository *pricing.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "GET, POST, OPTIONS", "Content-Type") {
 			return
 		}
 
@@ -464,8 +455,7 @@ func handlePublicFormQuote(w http.ResponseWriter, r *http.Request, repository *p
 	var request struct {
 		Items []submissionRequestItem `json:"items"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if !decodeJSONRequest(w, r, &request) {
 		return
 	}
 	items, totalAmount, err := calculateItemsForForm(r.Context(), repository, slug, request.Items)
@@ -482,7 +472,17 @@ func handlePublicFormQuote(w http.ResponseWriter, r *http.Request, repository *p
 func calculateItemsForForm(ctx context.Context, repository *pricing.Repository, slug string, requestedItems []submissionRequestItem) ([]pricing.Item, int, error) {
 	items := make([]pricing.Item, 0, len(requestedItems))
 	totalAmount := 0
+	seenProductIDs := map[string]struct{}{}
 	for _, requestedItem := range requestedItems {
+		productID := strings.TrimSpace(requestedItem.ProductID)
+		if productID == "" {
+			return nil, 0, fmt.Errorf("productId is required")
+		}
+		if _, exists := seenProductIDs[productID]; exists {
+			return nil, 0, fmt.Errorf("duplicate productId: %s", productID)
+		}
+		seenProductIDs[productID] = struct{}{}
+		requestedItem.ProductID = productID
 		item, err := repository.CalculateForForm(ctx, slug, requestedItem.ProductID, requestedItem.Quantity)
 		if err != nil {
 			return nil, 0, err
@@ -501,12 +501,7 @@ func calculateItemsForForm(ctx context.Context, repository *pricing.Repository, 
 
 func handleSubmission(repository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1:5173")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		if handleCORSPreflight(w, r, "POST, OPTIONS", "Content-Type") {
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -515,8 +510,7 @@ func handleSubmission(repository *submission.Repository, formRepository *formrep
 		}
 
 		var request submissionRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+		if !decodeJSONRequest(w, r, &request) {
 			return
 		}
 		if request.FormSlug == "" {

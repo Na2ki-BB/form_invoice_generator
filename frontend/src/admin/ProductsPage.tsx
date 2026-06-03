@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from '../config'
 
 type Product = {
   id: string
@@ -28,7 +29,7 @@ function ProductsPage() {
   const [error, setError] = useState('')
 
   const loadProducts = async () => {
-    const response = await fetch('http://127.0.0.1:8080/admin/products', { headers: { 'X-Local-Admin': 'true' } })
+    const response = await fetch(apiUrl('/admin/products'), { headers: { 'X-Local-Admin': 'true' } })
     if (!response.ok) throw new Error('products loading failed')
     setProducts(await response.json())
   }
@@ -47,7 +48,7 @@ function ProductsPage() {
     setError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8080/admin/products', {
+      const response = await fetch(apiUrl('/admin/products'), {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
         body: JSON.stringify(editingProduct),

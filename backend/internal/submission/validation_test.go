@@ -1,6 +1,7 @@
 package submission
 
 import (
+	"strings"
 	"testing"
 
 	"form-invoice-generator/backend/internal/pricing"
@@ -25,6 +26,8 @@ func TestValidate(t *testing.T) {
 		{name: "postal code is required", submission: withPostalCode(valid, ""), wantError: true},
 		{name: "address is required", submission: withAddress(valid, "\t"), wantError: true},
 		{name: "phone is required", submission: withCustomerPhone(valid, ""), wantError: true},
+		{name: "customer name is too long", submission: withCustomerName(valid, strings.Repeat("あ", 101)), wantError: true},
+		{name: "note is too long", submission: withNote(valid, strings.Repeat("あ", 1001)), wantError: true},
 		{name: "item is required", submission: withItems(valid, nil), wantError: true},
 		{name: "six items are rejected", submission: withItems(valid, []pricing.Item{{}, {}, {}, {}, {}, {}}), wantError: true},
 	}
@@ -61,5 +64,10 @@ func withCustomerPhone(submission Submission, value string) Submission {
 
 func withItems(submission Submission, items []pricing.Item) Submission {
 	submission.Items = items
+	return submission
+}
+
+func withNote(submission Submission, value string) Submission {
+	submission.Note = value
 	return submission
 }

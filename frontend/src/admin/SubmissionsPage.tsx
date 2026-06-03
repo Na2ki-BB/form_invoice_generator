@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from '../config'
 
 type SubmissionSummary = {
   id: number
@@ -29,7 +30,7 @@ function SubmissionsPage() {
       setError('')
 
       try {
-        const response = await fetch(`http://127.0.0.1:8080/admin/submissions?month=${month}`, { headers: { 'X-Local-Admin': 'true' } })
+        const response = await fetch(apiUrl(`/admin/submissions?month=${month}`), { headers: { 'X-Local-Admin': 'true' } })
         if (!response.ok) throw new Error('submissions loading failed')
 
         setSubmissions(await response.json())
@@ -62,7 +63,7 @@ function SubmissionsPage() {
     setDownloadError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8080/admin/invoices/bulk-download', {
+      const response = await fetch(apiUrl('/admin/invoices/bulk-download'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
         body: JSON.stringify({ submissionIds: selectedIds }),

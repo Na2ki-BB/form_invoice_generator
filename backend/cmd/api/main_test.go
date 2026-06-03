@@ -17,6 +17,22 @@ import (
 	"form-invoice-generator/backend/internal/submission"
 )
 
+func TestConfiguredAllowedOrigin(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("APP_CORS_ALLOWED_ORIGIN", "")
+		if got := configuredAllowedOrigin(); got != defaultAllowedOrigin {
+			t.Fatalf("configuredAllowedOrigin() = %q, want %q", got, defaultAllowedOrigin)
+		}
+	})
+
+	t.Run("environment variable", func(t *testing.T) {
+		t.Setenv("APP_CORS_ALLOWED_ORIGIN", "https://example.test")
+		if got := configuredAllowedOrigin(); got != "https://example.test" {
+			t.Fatalf("configuredAllowedOrigin() = %q, want custom origin", got)
+		}
+	})
+}
+
 func TestPublicAPIsIntegration(t *testing.T) {
 	if os.Getenv("RUN_DATABASE_INTEGRATION_TESTS") != "1" {
 		t.Skip("set RUN_DATABASE_INTEGRATION_TESTS=1 to run PostgreSQL integration tests")
@@ -45,6 +61,23 @@ func TestPublicAPIsIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("public CORS preflight", func(t *testing.T) {
+		response := serveRequest(handler, http.MethodOptions, "/public/forms/default", "")
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
+		}
+		if got := response.Header().Get("Access-Control-Allow-Origin"); got != defaultAllowedOrigin {
+			t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, defaultAllowedOrigin)
+		}
+	})
+
+	t.Run("old development invoice endpoint is removed", func(t *testing.T) {
+		response := serveRequest(handler, http.MethodGet, "/invoice/download", "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusNotFound, response.Body.String())
+		}
+	})
+
 	t.Run("discount quote", func(t *testing.T) {
 		response := serveRequest(handler, http.MethodPost, "/public/forms/default/quote", `{"items":[{"productId":"ofuda","quantity":2}]}`)
 		if response.Code != http.StatusOK {
@@ -64,6 +97,20 @@ func TestPublicAPIsIntegration(t *testing.T) {
 
 	t.Run("unknown form quote", func(t *testing.T) {
 		response := serveRequest(handler, http.MethodPost, "/public/forms/missing/quote", `{"items":[{"productId":"ofuda","quantity":2}]}`)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
+		}
+	})
+
+	t.Run("unknown JSON field is rejected", func(t *testing.T) {
+		response := serveRequest(handler, http.MethodPost, "/public/forms/default/quote", `{"items":[{"productId":"ofuda","quantity":2}],"unexpected":true}`)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
+		}
+	})
+
+	t.Run("duplicate product is rejected", func(t *testing.T) {
+		response := serveRequest(handler, http.MethodPost, "/public/forms/default/quote", `{"items":[{"productId":"ofuda","quantity":1},{"productId":"ofuda","quantity":2}]}`)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
 		}

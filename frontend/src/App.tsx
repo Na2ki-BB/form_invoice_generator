@@ -4,6 +4,7 @@ import PriceRulesPage from './admin/PriceRulesPage'
 import ProductsPage from './admin/ProductsPage'
 import SubmissionDetailPage from './admin/SubmissionDetailPage'
 import SubmissionsPage from './admin/SubmissionsPage'
+import { apiUrl } from './config'
 import type { CustomerInfo, Product, PublicForm, Quote } from './types'
 
 const initialCustomerInfo: CustomerInfo = {
@@ -73,7 +74,7 @@ function PublicFormPage() {
   useEffect(() => {
     const loadForm = async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8080/public/forms/${encodeURIComponent(formSlug)}`)
+        const response = await fetch(apiUrl(`/public/forms/${encodeURIComponent(formSlug)}`))
         if (!response.ok) throw new Error('form loading failed')
 
         const publicForm: PublicForm = await response.json()
@@ -105,7 +106,7 @@ function PublicFormPage() {
       setIsQuoteLoading(true)
       setQuoteError('')
       try {
-        const response = await fetch(`http://127.0.0.1:8080/public/forms/${encodeURIComponent(formSlug)}/quote`, {
+        const response = await fetch(apiUrl(`/public/forms/${encodeURIComponent(formSlug)}/quote`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ items: requestedItems }),
@@ -169,7 +170,7 @@ function PublicFormPage() {
     setSubmitError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8080/submissions', {
+      const response = await fetch(apiUrl('/submissions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

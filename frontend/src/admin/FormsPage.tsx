@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from '../config'
 
 type Form = { id: number; title: string; description: string; publicSlug: string; isActive: boolean; productIds: string[] }
 type Product = { id: string; name: string }
@@ -14,7 +15,7 @@ function FormsPage() {
 
   const loadData = async () => {
     const [formsResponse, productsResponse] = await Promise.all([
-      fetch('http://127.0.0.1:8080/admin/forms', { headers: { 'X-Local-Admin': 'true' } }), fetch('http://127.0.0.1:8080/admin/products', { headers: { 'X-Local-Admin': 'true' } }),
+      fetch(apiUrl('/admin/forms'), { headers: { 'X-Local-Admin': 'true' } }), fetch(apiUrl('/admin/products'), { headers: { 'X-Local-Admin': 'true' } }),
     ])
     if (!formsResponse.ok || !productsResponse.ok) throw new Error('loading failed')
     setForms(await formsResponse.json())
@@ -25,7 +26,7 @@ function FormsPage() {
   const saveForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage(''); setError('')
     try {
-      const response = await fetch('http://127.0.0.1:8080/admin/forms', { method: isNew ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' }, body: JSON.stringify(editingForm) })
+      const response = await fetch(apiUrl('/admin/forms'), { method: isNew ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' }, body: JSON.stringify(editingForm) })
       if (!response.ok) throw new Error('saving failed')
       await loadData(); setEditingForm(emptyForm); setIsNew(true); setMessage('フォームを保存しました。')
     } catch { setError('フォームの保存に失敗しました。') }

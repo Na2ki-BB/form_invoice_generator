@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from '../config'
 
 type Item = { productId: string; name: string; unitPrice: number; quantity: number; amount: number }
 type Detail = {
@@ -20,7 +21,7 @@ function SubmissionDetailPage({ submissionId }: { submissionId: number }) {
 
   useEffect(() => {
     const loadDetail = async () => {
-      const response = await fetch(`http://127.0.0.1:8080/admin/submissions/${submissionId}`, { headers: { 'X-Local-Admin': 'true' } })
+      const response = await fetch(apiUrl(`/admin/submissions/${submissionId}`), { headers: { 'X-Local-Admin': 'true' } })
       if (!response.ok) throw new Error('submission loading failed')
       setDetail(await response.json())
     }

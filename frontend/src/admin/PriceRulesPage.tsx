@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiUrl } from '../config'
 
 type Product = { id: string; name: string }
 type RuleType = 'fixed_total' | 'tier_unit'
@@ -37,7 +38,7 @@ function PriceRulesPage() {
 
   useEffect(() => {
     const loadProducts = async () => {
-      const response = await fetch('http://127.0.0.1:8080/admin/products', { headers: { 'X-Local-Admin': 'true' } })
+      const response = await fetch(apiUrl('/admin/products'), { headers: { 'X-Local-Admin': 'true' } })
       if (!response.ok) throw new Error('products loading failed')
       const loadedProducts: Product[] = await response.json()
       setProducts(loadedProducts)
@@ -49,7 +50,7 @@ function PriceRulesPage() {
   useEffect(() => {
     if (!selectedProductId) return
     const loadRules = async () => {
-      const response = await fetch(`http://127.0.0.1:8080/admin/price-rules?productId=${encodeURIComponent(selectedProductId)}`, { headers: { 'X-Local-Admin': 'true' } })
+      const response = await fetch(apiUrl(`/admin/price-rules?productId=${encodeURIComponent(selectedProductId)}`), { headers: { 'X-Local-Admin': 'true' } })
       if (!response.ok) throw new Error('price rules loading failed')
       setRules(await response.json())
       setEditingRule(emptyRule(selectedProductId))
@@ -76,7 +77,7 @@ function PriceRulesPage() {
     }
 
     try {
-      const response = await fetch('http://127.0.0.1:8080/admin/price-rules', {
+      const response = await fetch(apiUrl('/admin/price-rules'), {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
         body: JSON.stringify(ruleToSave),
