@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { adminFetch } from '../auth/auth'
 import { apiUrl } from '../config'
 import AdminHomeLink from './AdminHomeLink'
 
@@ -16,7 +17,7 @@ function FormsPage() {
 
   const loadData = async () => {
     const [formsResponse, productsResponse] = await Promise.all([
-      fetch(apiUrl('/admin/forms'), { headers: { 'X-Local-Admin': 'true' } }), fetch(apiUrl('/admin/products'), { headers: { 'X-Local-Admin': 'true' } }),
+      adminFetch(apiUrl('/admin/forms')), adminFetch(apiUrl('/admin/products')),
     ])
     if (!formsResponse.ok || !productsResponse.ok) throw new Error('loading failed')
     setForms(await formsResponse.json())
@@ -27,7 +28,7 @@ function FormsPage() {
   const saveForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setMessage(''); setError('')
     try {
-      const response = await fetch(apiUrl('/admin/forms'), { method: isNew ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' }, body: JSON.stringify(editingForm) })
+      const response = await adminFetch(apiUrl('/admin/forms'), { method: isNew ? 'POST' : 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editingForm) })
       if (!response.ok) throw new Error('saving failed')
       await loadData(); setEditingForm(emptyForm); setIsNew(true); setMessage('フォームを保存しました。')
     } catch { setError('フォームの保存に失敗しました。') }

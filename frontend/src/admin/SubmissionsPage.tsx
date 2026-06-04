@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { adminFetch } from '../auth/auth'
 import { apiUrl } from '../config'
 import AdminHomeLink from './AdminHomeLink'
 
@@ -31,7 +32,7 @@ function SubmissionsPage() {
       setError('')
 
       try {
-        const response = await fetch(apiUrl(`/admin/submissions?month=${month}`), { headers: { 'X-Local-Admin': 'true' } })
+        const response = await adminFetch(apiUrl(`/admin/submissions?month=${month}`))
         if (!response.ok) throw new Error('submissions loading failed')
 
         setSubmissions(await response.json())
@@ -64,9 +65,9 @@ function SubmissionsPage() {
     setDownloadError('')
 
     try {
-      const response = await fetch(apiUrl('/admin/invoices/bulk-download'), {
+      const response = await adminFetch(apiUrl('/admin/invoices/bulk-download'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionIds: selectedIds }),
       })
       if (!response.ok) throw new Error('invoice download failed')

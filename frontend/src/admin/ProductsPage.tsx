@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { adminFetch } from '../auth/auth'
 import { apiUrl } from '../config'
 import AdminHomeLink from './AdminHomeLink'
 
@@ -30,7 +31,7 @@ function ProductsPage() {
   const [error, setError] = useState('')
 
   const loadProducts = async () => {
-    const response = await fetch(apiUrl('/admin/products'), { headers: { 'X-Local-Admin': 'true' } })
+    const response = await adminFetch(apiUrl('/admin/products'))
     if (!response.ok) throw new Error('products loading failed')
     setProducts(await response.json())
   }
@@ -49,9 +50,9 @@ function ProductsPage() {
     setError('')
 
     try {
-      const response = await fetch(apiUrl('/admin/products'), {
+      const response = await adminFetch(apiUrl('/admin/products'), {
         method: isNew ? 'POST' : 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Local-Admin': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingProduct),
       })
       if (!response.ok) throw new Error('product saving failed')

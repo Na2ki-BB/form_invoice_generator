@@ -5,6 +5,10 @@ import PriceRulesPage from './admin/PriceRulesPage'
 import ProductsPage from './admin/ProductsPage'
 import SubmissionDetailPage from './admin/SubmissionDetailPage'
 import SubmissionsPage from './admin/SubmissionsPage'
+import AdminAuthCallbackPage from './auth/AdminAuthCallbackPage'
+import AdminLoginPage from './auth/AdminLoginPage'
+import AdminLogoutLink from './auth/AdminLogoutLink'
+import { isAdminAuthenticated, isCognitoConfigured } from './auth/auth'
 import { apiUrl } from './config'
 import type { CustomerInfo, Product, PublicForm, Quote } from './types'
 
@@ -29,28 +33,48 @@ const getPublicFormSlug = () => {
 }
 
 function App() {
+  if (window.location.pathname === '/admin/login') {
+    return <AdminLoginPage />
+  }
+  if (window.location.pathname === '/admin/auth/callback') {
+    return <AdminAuthCallbackPage />
+  }
   if (window.location.pathname === '/admin' || window.location.pathname === '/admin/') {
-    return <AdminHomePage />
+    return <AdminRoute><AdminHomePage /></AdminRoute>
   }
   if (window.location.pathname === '/admin/submissions') {
-    return <SubmissionsPage />
+    return <AdminRoute><SubmissionsPage /></AdminRoute>
   }
   if (window.location.pathname.startsWith('/admin/submissions/')) {
     const submissionId = Number(window.location.pathname.replace('/admin/submissions/', ''))
-    return <SubmissionDetailPage submissionId={submissionId} />
+    return <AdminRoute><SubmissionDetailPage submissionId={submissionId} /></AdminRoute>
   }
   if (window.location.pathname === '/admin/products') {
-    return <ProductsPage />
+    return <AdminRoute><ProductsPage /></AdminRoute>
   }
   if (window.location.pathname === '/admin/price-rules') {
-    return <PriceRulesPage />
+    return <AdminRoute><PriceRulesPage /></AdminRoute>
   }
   if (window.location.pathname === '/admin/forms') {
-    return <FormsPage />
+    return <AdminRoute><FormsPage /></AdminRoute>
   }
 
   return <PublicFormPage />
 }
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  if (!isAdminAuthenticated()) {
+    return <AdminLoginPage />
+  }
+
+  return (
+    <>
+      {isCognitoConfigured() && <AdminLogoutLink />}
+      {children}
+    </>
+  )
+}
+
 
 function PublicFormPage() {
   const formSlug = getPublicFormSlug()

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AdminHomeLink from './AdminHomeLink'
+import { adminFetch } from '../auth/auth'
 import { apiUrl } from '../config'
 
 type Item = { productId: string; name: string; unitPrice: number; quantity: number; amount: number }
@@ -22,7 +23,7 @@ function SubmissionDetailPage({ submissionId }: { submissionId: number }) {
 
   useEffect(() => {
     const loadDetail = async () => {
-      const response = await fetch(apiUrl(`/admin/submissions/${submissionId}`), { headers: { 'X-Local-Admin': 'true' } })
+      const response = await adminFetch(apiUrl(`/admin/submissions/${submissionId}`))
       if (!response.ok) throw new Error('submission loading failed')
       setDetail(await response.json())
     }
