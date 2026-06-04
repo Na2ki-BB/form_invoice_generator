@@ -67,6 +67,7 @@ func TestCalculateWithRules(t *testing.T) {
 	two := 2
 	three := 3
 	ninety := 90
+	ninetyFive := 95
 	oneHundred := 100
 	oneHundredNinety := 190
 
@@ -89,6 +90,15 @@ func TestCalculateWithRules(t *testing.T) {
 				{Type: RuleTypeFixedTotal, MinQuantity: 2, MaxQuantity: &two, TotalPrice: &oneHundredNinety},
 			},
 			want: Item{ProductID: "test", Name: "テスト商品", UnitPrice: 95, Quantity: 2, Amount: 190},
+		},
+		{
+			name:     "固定合計の後は段階単価を使用",
+			quantity: 3,
+			rules: []Rule{
+				{Type: RuleTypeFixedTotal, MinQuantity: 2, MaxQuantity: &two, TotalPrice: &oneHundredNinety},
+				{Type: RuleTypeTierUnit, MinQuantity: 2, MaxQuantity: nil, UnitPrice: &ninetyFive},
+			},
+			want: Item{ProductID: "test", Name: "テスト商品", UnitPrice: 95, Quantity: 3, Amount: 285},
 		},
 		{
 			name:     "段階単価を使用",

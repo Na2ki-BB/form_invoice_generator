@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../config'
+import AdminHomeLink from './AdminHomeLink'
 
 type Product = { id: string; name: string }
 type RuleType = 'fixed_total' | 'tier_unit'
@@ -98,6 +99,7 @@ function PriceRulesPage() {
   return (
     <main>
       <h1>価格ルール管理</h1>
+      <AdminHomeLink />
       <p><a href="/admin/products">商品管理へ戻る</a></p>
       {message && <p>{message}</p>}
       {error && <p className="error-message" role="alert">{error}</p>}

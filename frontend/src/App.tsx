@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AdminHomePage from './admin/AdminHomePage'
 import FormsPage from './admin/FormsPage'
 import PriceRulesPage from './admin/PriceRulesPage'
 import ProductsPage from './admin/ProductsPage'
@@ -28,6 +29,9 @@ const getPublicFormSlug = () => {
 }
 
 function App() {
+  if (window.location.pathname === '/admin' || window.location.pathname === '/admin/') {
+    return <AdminHomePage />
+  }
   if (window.location.pathname === '/admin/submissions') {
     return <SubmissionsPage />
   }
@@ -185,13 +189,6 @@ function PublicFormPage() {
 
       if (!response.ok) throw new Error('submission failed')
 
-      const invoice = await response.blob()
-      const downloadUrl = URL.createObjectURL(invoice)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = 'invoice.xlsx'
-      link.click()
-      URL.revokeObjectURL(downloadUrl)
       setScreen('complete')
     } catch {
       setSubmitError('送信に失敗しました。時間をおいてもう一度お試しください。')
@@ -213,7 +210,7 @@ function PublicFormPage() {
       <main>
         <h1>申込みが完了しました</h1>
         <p>申込み内容を受け付けました。</p>
-        <p>申込み内容を保存し、Excel請求書をダウンロードしました。</p>
+        <p>申込み内容を受け付けました。確認後、必要に応じて管理者からご連絡します。</p>
       </main>
     )
   }

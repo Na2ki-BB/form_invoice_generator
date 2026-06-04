@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../config'
+import AdminHomeLink from './AdminHomeLink'
 
 type Form = { id: number; title: string; description: string; publicSlug: string; isActive: boolean; productIds: string[] }
 type Product = { id: string; name: string }
@@ -34,7 +35,8 @@ function FormsPage() {
   const toggleProduct = (productId: string) => setEditingForm((form) => ({ ...form, productIds: form.productIds.includes(productId) ? form.productIds.filter((id) => id !== productId) : [...form.productIds, productId] }))
 
   return <main>
-    <h1>フォーム管理</h1>{message && <p>{message}</p>}{error && <p className="error-message">{error}</p>}
+    <h1>フォーム管理</h1>
+      <AdminHomeLink />{message && <p>{message}</p>}{error && <p className="error-message">{error}</p>}
     <table className="submissions-table"><thead><tr><th>タイトル</th><th>公開URL</th><th>商品数</th><th>操作</th></tr></thead><tbody>{forms.map((form) => <tr key={form.id}><td>{form.title}</td><td><a href={`/forms/${form.publicSlug}`}>/forms/{form.publicSlug}</a></td><td>{form.productIds.length}</td><td><button type="button" onClick={() => { setEditingForm(form); setIsNew(false) }}>編集</button></td></tr>)}</tbody></table>
     <h2>{isNew ? 'フォームを登録' : 'フォームを編集'}</h2>
     <form className="customer-fields" onSubmit={saveForm}>

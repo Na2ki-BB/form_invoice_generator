@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AdminHomeLink from './AdminHomeLink'
 import { apiUrl } from '../config'
 
 type Item = { productId: string; name: string; unitPrice: number; quantity: number; amount: number }
@@ -34,6 +35,7 @@ function SubmissionDetailPage({ submissionId }: { submissionId: number }) {
   return (
     <main>
       <h1>申込み詳細</h1>
+      <AdminHomeLink />
       <p><a href="/admin/submissions">申込み一覧へ戻る</a></p>
       <dl className="confirmation-list">
         <dt>請求書番号</dt><dd>{detail.invoiceNumber}</dd>

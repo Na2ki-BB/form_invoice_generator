@@ -553,22 +553,13 @@ func handleSubmission(repository *submission.Repository, formRepository *formrep
 		}
 		log.Printf("saved submission: id=%d invoice=%q customer=%q items=%d total=%d", created.ID, created.InvoiceNumber, request.CustomerName, len(items), totalAmount)
 
-		generated, err := invoice.Generate(invoice.Data{
+		writeJSON(w, http.StatusCreated, struct {
+			ID            int64  `json:"id"`
+			InvoiceNumber string `json:"invoiceNumber"`
+		}{
+			ID:            created.ID,
 			InvoiceNumber: created.InvoiceNumber,
-			InvoiceDate:   created.SubmittedAt,
-			CustomerName:  request.CustomerName,
-			PostalCode:    request.PostalCode,
-			Address:       request.Address,
-			Note:          request.Note,
-			Items:         items,
 		})
-		if err != nil {
-			log.Printf("generate submitted invoice: %v", err)
-			http.Error(w, "failed to generate invoice", http.StatusInternalServerError)
-			return
-		}
-
-		writeInvoice(w, generated, "invoice.xlsx")
 	}
 }
 

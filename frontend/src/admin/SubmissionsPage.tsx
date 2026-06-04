@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../config'
+import AdminHomeLink from './AdminHomeLink'
 
 type SubmissionSummary = {
   id: number
@@ -85,6 +86,7 @@ function SubmissionsPage() {
   return (
     <main>
       <h1>月別申込み一覧</h1>
+      <AdminHomeLink />
       <label className="month-field">
         表示する月
         <input type="month" value={month} onChange={(event) => setMonth(event.target.value)} />

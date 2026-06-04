@@ -122,6 +122,32 @@ func TestPublicAPIsIntegration(t *testing.T) {
 			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusBadRequest, response.Body.String())
 		}
 	})
+
+	t.Run("submission returns JSON instead of invoice file", func(t *testing.T) {
+		response := serveRequest(handler, http.MethodPost, "/submissions", `{"formSlug":"default","customerName":"API Test","postalCode":"100-0001","address":"test address","phone":"000-0000","items":[{"productId":"ofuda","quantity":3}]}`)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusCreated, response.Body.String())
+		}
+		if got := response.Header().Get("Content-Type"); !strings.Contains(got, "application/json") {
+			t.Fatalf("Content-Type = %q, want JSON", got)
+		}
+		var created struct {
+			ID            int64  `json:"id"`
+			InvoiceNumber string `json:"invoiceNumber"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+			t.Fatalf("decode submission response: %v", err)
+		}
+		if created.ID == 0 || created.InvoiceNumber == "" {
+			t.Fatalf("created submission response = %+v, want id and invoiceNumber", created)
+		}
+		if _, err := db.Exec(ctx, "DELETE FROM submission_items WHERE submission_id = $1", created.ID); err != nil {
+			t.Fatalf("delete submission items: %v", err)
+		}
+		if _, err := db.Exec(ctx, "DELETE FROM submissions WHERE id = $1", created.ID); err != nil {
+			t.Fatalf("delete submission: %v", err)
+		}
+	})
 }
 
 func serveRequest(handler http.Handler, method string, path string, body string) *httptest.ResponseRecorder {
