@@ -1,0 +1,9 @@
+.git
+.gitignore
+Dockerfile
+*.test
+*.out
+coverage.out
+tmp/
+dist/
+node_modules/
