@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"form-invoice-generator/backend/internal/auth"
 	"form-invoice-generator/backend/internal/database"
 	formrepository "form-invoice-generator/backend/internal/form"
 	"form-invoice-generator/backend/internal/invoice"
@@ -60,8 +60,12 @@ func main() {
 	pricingRepository := pricing.NewRepository(db)
 	productRepository := product.NewRepository(db)
 	priceRuleRepository := pricing.NewRuleRepository(db)
+	authenticator, err := auth.NewFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	handler := newHandler(submissionRepository, formRepository, pricingRepository, priceRuleRepository, productRepository)
+	handler := newHandler(submissionRepository, formRepository, pricingRepository, priceRuleRepository, productRepository, authenticator)
 
 	log.Printf("API server listening on %s", address)
 	if err := http.ListenAndServe(address, handler); err != nil {
@@ -69,17 +73,17 @@ func main() {
 	}
 }
 
-func newHandler(submissionRepository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository, priceRuleRepository *pricing.RuleRepository, productRepository *product.Repository) http.Handler {
+func newHandler(submissionRepository *submission.Repository, formRepository *formrepository.Repository, pricingRepository *pricing.Repository, priceRuleRepository *pricing.RuleRepository, productRepository *product.Repository, authenticator *auth.Authenticator) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/submissions", handleSubmission(submissionRepository, formRepository, pricingRepository))
 	mux.HandleFunc("/public/forms/", handlePublicForm(formRepository, pricingRepository))
-	mux.Handle("/admin/submissions", requireLocalAdmin(handleAdminSubmissions(submissionRepository)))
-	mux.Handle("/admin/submissions/", requireLocalAdmin(handleAdminSubmissionDetail(submissionRepository)))
-	mux.Handle("/admin/invoices/bulk-download", requireLocalAdmin(handleBulkInvoiceDownload(submissionRepository)))
-	mux.Handle("/admin/products", requireLocalAdmin(handleAdminProducts(productRepository)))
-	mux.Handle("/admin/price-rules", requireLocalAdmin(handleAdminPriceRules(priceRuleRepository)))
-	mux.Handle("/admin/forms", requireLocalAdmin(handleAdminForms(formRepository)))
+	mux.Handle("/admin/submissions", requireAdmin(authenticator, handleAdminSubmissions(submissionRepository)))
+	mux.Handle("/admin/submissions/", requireAdmin(authenticator, handleAdminSubmissionDetail(submissionRepository)))
+	mux.Handle("/admin/invoices/bulk-download", requireAdmin(authenticator, handleBulkInvoiceDownload(submissionRepository)))
+	mux.Handle("/admin/products", requireAdmin(authenticator, handleAdminProducts(productRepository)))
+	mux.Handle("/admin/price-rules", requireAdmin(authenticator, handleAdminPriceRules(priceRuleRepository)))
+	mux.Handle("/admin/forms", requireAdmin(authenticator, handleAdminForms(formRepository)))
 	return mux
 }
 
@@ -123,27 +127,18 @@ func decodeJSONRequest(w http.ResponseWriter, r *http.Request, destination any) 
 	return true
 }
 
-func requireLocalAdmin(next http.Handler) http.Handler {
+func requireAdmin(authenticator *auth.Authenticator, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type, X-Local-Admin") {
+		if handleCORSPreflight(w, r, "GET, POST, PUT, OPTIONS", "Content-Type, X-Local-Admin, Authorization") {
 			return
 		}
 
-		if !isLoopbackRequest(r) || r.Header.Get("X-Local-Admin") != "true" {
+		if err := authenticator.AuthenticateAdmin(r); err != nil {
 			http.Error(w, "admin authentication required", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func isLoopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {

@@ -10,12 +10,53 @@ import (
 	"testing"
 	"time"
 
+	"form-invoice-generator/backend/internal/auth"
 	"form-invoice-generator/backend/internal/database"
 	formrepository "form-invoice-generator/backend/internal/form"
 	"form-invoice-generator/backend/internal/pricing"
 	"form-invoice-generator/backend/internal/product"
 	"form-invoice-generator/backend/internal/submission"
 )
+
+func TestRequireAdminLocal(t *testing.T) {
+	handler := requireAdmin(auth.NewLocalAuthenticator(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Run("rejects request without local admin header", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "/admin/products", nil)
+		request.RemoteAddr = "127.0.0.1:12345"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+		}
+	})
+
+	t.Run("allows request with local admin header", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodGet, "/admin/products", nil)
+		request.RemoteAddr = "127.0.0.1:12345"
+		request.Header.Set("X-Local-Admin", "true")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+		}
+	})
+
+	t.Run("preflight allows authorization header", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodOptions, "/admin/products", nil)
+		request.RemoteAddr = "198.51.100.1:12345"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+		}
+		if got := response.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Authorization") {
+			t.Fatalf("Access-Control-Allow-Headers = %q, want Authorization", got)
+		}
+	})
+}
 
 func TestConfiguredAllowedOrigin(t *testing.T) {
 	t.Run("default", func(t *testing.T) {
@@ -52,6 +93,7 @@ func TestPublicAPIsIntegration(t *testing.T) {
 		pricing.NewRepository(db),
 		pricing.NewRuleRepository(db),
 		product.NewRepository(db),
+		auth.NewLocalAuthenticator(),
 	)
 
 	t.Run("public form", func(t *testing.T) {
