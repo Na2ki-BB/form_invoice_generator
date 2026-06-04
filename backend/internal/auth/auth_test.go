@@ -28,6 +28,17 @@ func TestNewFromEnv(t *testing.T) {
 		}
 	})
 
+	t.Run("trusted gateway mode is accepted", func(t *testing.T) {
+		t.Setenv("APP_AUTH_MODE", "trusted_gateway")
+		authenticator, err := NewFromEnv()
+		if err != nil {
+			t.Fatalf("NewFromEnv() error = %v", err)
+		}
+		if authenticator.mode != ModeTrustedGateway {
+			t.Fatalf("mode = %q, want %q", authenticator.mode, ModeTrustedGateway)
+		}
+	})
+
 	t.Run("cognito requires issuer and audience", func(t *testing.T) {
 		t.Setenv("APP_AUTH_MODE", "cognito")
 		t.Setenv("APP_COGNITO_ISSUER", "")
@@ -63,6 +74,16 @@ func TestLocalAuthenticatorRejectsMissingHeader(t *testing.T) {
 
 	if err := authenticator.AuthenticateAdmin(request); err == nil {
 		t.Fatal("AuthenticateAdmin() error = nil, want error")
+	}
+}
+
+func TestTrustedGatewayAuthenticator(t *testing.T) {
+	authenticator := &Authenticator{mode: ModeTrustedGateway}
+	request := httptest.NewRequest(http.MethodGet, "/admin/products", nil)
+	request.RemoteAddr = "203.0.113.10:12345"
+
+	if err := authenticator.AuthenticateAdmin(request); err != nil {
+		t.Fatalf("AuthenticateAdmin() error = %v", err)
 	}
 }
 

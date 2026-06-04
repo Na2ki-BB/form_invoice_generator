@@ -11,8 +11,9 @@ import (
 type Mode string
 
 const (
-	ModeLocal   Mode = "local"
-	ModeCognito Mode = "cognito"
+	ModeLocal          Mode = "local"
+	ModeCognito        Mode = "cognito"
+	ModeTrustedGateway Mode = "trusted_gateway"
 )
 
 var ErrUnauthorized = errors.New("admin authentication required")
@@ -35,6 +36,8 @@ func NewFromEnv() (*Authenticator, error) {
 	switch mode {
 	case ModeLocal:
 		return &Authenticator{mode: mode}, nil
+	case ModeTrustedGateway:
+		return &Authenticator{mode: mode}, nil
 	case ModeCognito:
 		issuer := strings.TrimSpace(os.Getenv("APP_COGNITO_ISSUER"))
 		audience := strings.TrimSpace(os.Getenv("APP_COGNITO_AUDIENCE"))
@@ -44,7 +47,7 @@ func NewFromEnv() (*Authenticator, error) {
 		}
 		return &Authenticator{mode: mode, verifier: verifier}, nil
 	default:
-		return nil, errors.New("APP_AUTH_MODE must be local or cognito")
+		return nil, errors.New("APP_AUTH_MODE must be local, cognito, or trusted_gateway")
 	}
 }
 
@@ -56,6 +59,8 @@ func (authenticator *Authenticator) AuthenticateAdmin(r *http.Request) error {
 	switch authenticator.mode {
 	case ModeLocal:
 		return authenticateLocalAdmin(r)
+	case ModeTrustedGateway:
+		return nil
 	case ModeCognito:
 		return authenticator.verifier.VerifyRequest(r)
 	default:
