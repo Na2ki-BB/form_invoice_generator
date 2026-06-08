@@ -32,30 +32,37 @@ const getPublicFormSlug = () => {
     : 'default'
 }
 
+const normalizedPathname = () => {
+  const pathname = window.location.pathname
+  return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+}
+
 function App() {
-  if (window.location.pathname === '/admin/login') {
+  const pathname = normalizedPathname()
+
+  if (pathname === '/admin/login') {
     return <AdminLoginPage />
   }
-  if (window.location.pathname === '/admin/auth/callback') {
+  if (pathname === '/admin/auth/callback') {
     return <AdminAuthCallbackPage />
   }
-  if (window.location.pathname === '/admin' || window.location.pathname === '/admin/') {
+  if (pathname === '/admin') {
     return <AdminRoute><AdminHomePage /></AdminRoute>
   }
-  if (window.location.pathname === '/admin/submissions') {
+  if (pathname === '/admin/submissions') {
     return <AdminRoute><SubmissionsPage /></AdminRoute>
   }
-  if (window.location.pathname.startsWith('/admin/submissions/')) {
-    const submissionId = Number(window.location.pathname.replace('/admin/submissions/', ''))
+  if (pathname.startsWith('/admin/submissions/')) {
+    const submissionId = Number(pathname.replace('/admin/submissions/', ''))
     return <AdminRoute><SubmissionDetailPage submissionId={submissionId} /></AdminRoute>
   }
-  if (window.location.pathname === '/admin/products') {
+  if (pathname === '/admin/products') {
     return <AdminRoute><ProductsPage /></AdminRoute>
   }
-  if (window.location.pathname === '/admin/price-rules') {
+  if (pathname === '/admin/price-rules') {
     return <AdminRoute><PriceRulesPage /></AdminRoute>
   }
-  if (window.location.pathname === '/admin/forms') {
+  if (pathname === '/admin/forms') {
     return <AdminRoute><FormsPage /></AdminRoute>
   }
 
