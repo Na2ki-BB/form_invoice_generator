@@ -24,6 +24,8 @@ Applicants use a public form to enter products, quantities, and applicant inform
 - View submission details
 - Download selected invoices as a ZIP file containing Excel files
 
+Admin pages are intended to be used after login. In a local environment, the app can be checked without configuring an external authentication service; for deployed environments, an external authentication service such as Amazon Cognito can be used.
+
 ## Order Form Flow
 
 ```text
